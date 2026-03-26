@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import EventTable from "@/components/EventTable";
 import type { AuditEvent } from "@prisma/client";
+import AnalyticsPanel from "@/components/AnalyticsPanel";
 
 export default async function HomePage() {
   const events: AuditEvent[] = await prisma.auditEvent.findMany({
@@ -56,6 +57,8 @@ export default async function HomePage() {
           </div>
         </div>
 
+        <AnalyticsPanel events={events} />
+        
         {/* Events Table */}
         <section className="rounded-2xl border border-slate-800 bg-slate-900 shadow-sm">
           <div className="border-b border-slate-800 px-5 py-4">
