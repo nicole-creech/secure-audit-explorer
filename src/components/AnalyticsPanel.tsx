@@ -63,7 +63,7 @@ export default function AnalyticsPanel({ events }: Props) {
 
   return (
     <div className="grid gap-6 xl:grid-cols-2">
-      <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm">
+      <section className="min-w-0 rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm">
         <div className="mb-4">
           <h2 className="text-lg font-semibold text-slate-100">
             Severity Distribution
@@ -73,7 +73,7 @@ export default function AnalyticsPanel({ events }: Props) {
           </p>
         </div>
 
-        <div className="h-72">
+        <div className="h-72 min-w-0">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={severityData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
@@ -86,7 +86,7 @@ export default function AnalyticsPanel({ events }: Props) {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm">
+      <section className="min-w-0 rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm">
         <div className="mb-4">
           <h2 className="text-lg font-semibold text-slate-100">
             Flagged Event Ratio
@@ -96,7 +96,7 @@ export default function AnalyticsPanel({ events }: Props) {
           </p>
         </div>
 
-        <div className="h-72">
+        <div className="h-72 min-w-0">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
@@ -123,7 +123,7 @@ export default function AnalyticsPanel({ events }: Props) {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm">
+      <section className="min-w-0 rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm">
         <div className="mb-4">
           <h2 className="text-lg font-semibold text-slate-100">Top Actors</h2>
           <p className="text-sm text-slate-400">
@@ -131,7 +131,7 @@ export default function AnalyticsPanel({ events }: Props) {
           </p>
         </div>
 
-        <div className="h-72">
+        <div className="h-72 min-w-0">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={actorData} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
@@ -149,7 +149,7 @@ export default function AnalyticsPanel({ events }: Props) {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm">
+      <section className="min-w-0 rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm">
         <div className="mb-4">
           <h2 className="text-lg font-semibold text-slate-100">
             Status Overview

@@ -34,6 +34,32 @@ function anomalyBadge(label: string) {
   return styles[label] ?? "bg-white/10 text-white ring-1 ring-white/20";
 }
 
+function getInvestigationSummary(event: AuditEvent, relatedEvents: AuditEvent[]) {
+  const detections = getDetectionLabels(event);
+  const flaggedCount = relatedEvents.filter((item) => item.flagged).length;
+  const criticalCount = relatedEvents.filter(
+    (item) => item.severity === "critical"
+  ).length;
+
+  if (detections.includes("Impossible travel")) {
+    return `This actor has activity associated with impossible travel indicators. Review authentication origin, session history, and recent access changes for possible account compromise.`;
+  }
+
+  if (detections.includes("Privilege escalation")) {
+    return `This actor performed a privilege-related action. Validate whether the access change was approved and whether any sensitive systems were touched afterward.`;
+  }
+
+  if (detections.includes("Repeated auth failures")) {
+    return `This actor shows failed authentication behavior that may indicate password spraying, brute force attempts, or stolen credential testing.`;
+  }
+
+  if (flaggedCount >= 2 || criticalCount >= 1) {
+    return `This actor has multiple elevated events in the current timeline. The pattern suggests the account should be reviewed as part of an active investigation.`;
+  }
+
+  return `This actor has ${relatedEvents.length} related events in the current dataset. Review the event sequence to understand whether the selected activity is isolated or part of a broader pattern.`;
+}
+
 export default function EventTable({ events }: { events: AuditEvent[] }) {
   const [selected, setSelected] = useState<AuditEvent | null>(null);
   const [query, setQuery] = useState("");
@@ -59,6 +85,17 @@ export default function EventTable({ events }: { events: AuditEvent[] }) {
       return matchesQuery && matchesSeverity && matchesFlagged;
     });
   }, [events, query, severity, flaggedOnly]);
+
+  const selectedRelatedEvents = useMemo(() => {
+    if (!selected) return [];
+
+    return [...events]
+      .filter((event) => event.actor === selected.actor)
+      .sort(
+        (a, b) =>
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
+  }, [events, selected]);
 
   return (
     <div className="relative">
@@ -194,9 +231,11 @@ export default function EventTable({ events }: { events: AuditEvent[] }) {
       </div>
 
       {selected && (
-        <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md border-l border-slate-800 bg-slate-900 p-6 shadow-2xl">
+        <div className="fixed inset-y-0 right-0 z-50 w-full max-w-2xl overflow-y-auto border-l border-slate-800 bg-slate-900 p-6 shadow-2xl">
           <div className="mb-6 flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-slate-100">Event Details</h2>
+            <h2 className="text-xl font-semibold text-slate-100">
+              Investigation Workspace
+            </h2>
             <button
               onClick={() => setSelected(null)}
               className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800"
@@ -205,118 +244,218 @@ export default function EventTable({ events }: { events: AuditEvent[] }) {
             </button>
           </div>
 
-          <div className="space-y-4 text-sm text-slate-300">
-            <div>
-              <p className="text-slate-500">Timestamp</p>
-              <p>{new Date(selected.timestamp).toLocaleString()}</p>
+          <div className="mb-6 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-cyan-300">
+              Investigation Summary
+            </p>
+            <p className="text-sm text-cyan-50">
+              {getInvestigationSummary(selected, selectedRelatedEvents)}
+            </p>
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-[1fr_1.1fr]">
+            <div className="space-y-4 text-sm text-slate-300">
+              <div>
+                <p className="text-slate-500">Timestamp</p>
+                <p>{new Date(selected.timestamp).toLocaleString()}</p>
+              </div>
+
+              <div>
+                <p className="text-slate-500">Actor</p>
+                <p>{selected.actor}</p>
+              </div>
+
+              <div>
+                <p className="text-slate-500">Actor Type</p>
+                <p className="capitalize">{selected.actorType.replaceAll("_", " ")}</p>
+              </div>
+
+              <div>
+                <p className="text-slate-500">Action</p>
+                <p>{selected.action}</p>
+              </div>
+
+              <div>
+                <p className="text-slate-500">Resource</p>
+                <p>{selected.resource}</p>
+                <p className="text-xs text-slate-500">{selected.resourceType}</p>
+              </div>
+
+              <div>
+                <p className="text-slate-500">IP Address</p>
+                <p>{selected.ipAddress}</p>
+              </div>
+
+              <div>
+                <p className="text-slate-500">Location</p>
+                <p>{selected.location ?? "Unknown"}</p>
+              </div>
+
+              <div>
+                <p className="text-slate-500">User Agent</p>
+                <p>{selected.userAgent ?? "Unknown"}</p>
+              </div>
+
+              <div>
+                <p className="mb-2 text-slate-500">Detections</p>
+                <div className="flex flex-wrap gap-2">
+                  {getDetectionLabels(selected).length > 0 ? (
+                    getDetectionLabels(selected).map((label) => (
+                      <span
+                        key={label}
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${anomalyBadge(
+                          label
+                        )}`}
+                      >
+                        {label}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-xs text-slate-500">None</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-slate-500">Severity</p>
+                  <span
+                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${severityBadge(
+                      selected.severity
+                    )}`}
+                  >
+                    {selected.severity}
+                  </span>
+                </div>
+
+                <div>
+                  <p className="text-slate-500">Risk Score</p>
+                  <p>{selected.riskScore}</p>
+                </div>
+
+                <div>
+                  <p className="text-slate-500">Status</p>
+                  <p className="capitalize">{selected.status}</p>
+                </div>
+
+                <div>
+                  <p className="text-slate-500">Outcome</p>
+                  <p className="capitalize">{selected.outcome}</p>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-slate-500">Flagged</p>
+                <p>{selected.flagged ? "Yes" : "No"}</p>
+              </div>
+
+              {selected.reason && (
+                <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4">
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-rose-300">
+                    Flag Reason
+                  </p>
+                  <p className="text-sm text-rose-100">{selected.reason}</p>
+                </div>
+              )}
+
+              {selected.metadata && (
+                <div>
+                  <p className="mb-2 text-slate-500">Metadata</p>
+                  <pre className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 p-4 text-xs text-slate-300">
+                    {JSON.stringify(JSON.parse(selected.metadata), null, 2)}
+                  </pre>
+                </div>
+              )}
             </div>
 
             <div>
-              <p className="text-slate-500">Actor</p>
-              <p>{selected.actor}</p>
-            </div>
+              <div className="mb-3">
+                <h3 className="text-lg font-semibold text-slate-100">
+                  Actor Timeline
+                </h3>
+                <p className="text-sm text-slate-400">
+                  Related activity for <span className="font-medium text-slate-200">{selected.actor}</span>
+                </p>
+              </div>
 
-            <div>
-              <p className="text-slate-500">Actor Type</p>
-              <p className="capitalize">{selected.actorType.replaceAll("_", " ")}</p>
-            </div>
+              <div className="space-y-4">
+                {selectedRelatedEvents.map((event, index) => {
+                  const detections = getDetectionLabels(event);
+                  const isSelected = event.id === selected.id;
 
-            <div>
-              <p className="text-slate-500">Action</p>
-              <p>{selected.action}</p>
-            </div>
+                  return (
+                    <div key={event.id} className="relative pl-6">
+                      {index < selectedRelatedEvents.length - 1 && (
+                        <div className="absolute left-[10px] top-6 h-full w-px bg-slate-800" />
+                      )}
 
-            <div>
-              <p className="text-slate-500">Resource</p>
-              <p>{selected.resource}</p>
-              <p className="text-xs text-slate-500">{selected.resourceType}</p>
-            </div>
+                      <div
+                        className={`absolute left-0 top-1.5 h-5 w-5 rounded-full border-2 ${
+                          isSelected
+                            ? "border-cyan-400 bg-cyan-400/20"
+                            : "border-slate-600 bg-slate-900"
+                        }`}
+                      />
 
-            <div>
-              <p className="text-slate-500">IP Address</p>
-              <p>{selected.ipAddress}</p>
-            </div>
+                      <div
+                        className={`rounded-2xl border p-4 ${
+                          isSelected
+                            ? "border-cyan-500/30 bg-cyan-500/10"
+                            : "border-slate-800 bg-slate-950/60"
+                        }`}
+                      >
+                        <div className="mb-2 flex items-start justify-between gap-4">
+                          <div>
+                            <p className="text-sm font-medium text-slate-100">
+                              {event.action}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {new Date(event.timestamp).toLocaleString()}
+                            </p>
+                          </div>
 
-            <div>
-              <p className="text-slate-500">Location</p>
-              <p>{selected.location ?? "Unknown"}</p>
-            </div>
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${severityBadge(
+                              event.severity
+                            )}`}
+                          >
+                            {event.severity}
+                          </span>
+                        </div>
 
-            <div>
-              <p className="text-slate-500">User Agent</p>
-              <p>{selected.userAgent ?? "Unknown"}</p>
-            </div>
+                        <div className="mb-2 text-sm text-slate-300">
+                          <div>{event.resource}</div>
+                          <div className="text-xs text-slate-500">
+                            {event.resourceType} • {event.ipAddress}
+                          </div>
+                        </div>
 
-            <div>
-              <p className="mb-2 text-slate-500">Detections</p>
-              <div className="flex flex-wrap gap-2">
-                {getDetectionLabels(selected).length > 0 ? (
-                  getDetectionLabels(selected).map((label) => (
-                    <span
-                      key={label}
-                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${anomalyBadge(
-                        label
-                      )}`}
-                    >
-                      {label}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-xs text-slate-500">None</span>
+                        {detections.length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            {detections.map((label) => (
+                              <span
+                                key={label}
+                                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${anomalyBadge(
+                                  label
+                                )}`}
+                              >
+                                {label}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {selectedRelatedEvents.length === 0 && (
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-500">
+                    No related timeline events found for this actor.
+                  </div>
                 )}
               </div>
             </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-slate-500">Severity</p>
-                <span
-                  className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${severityBadge(
-                    selected.severity
-                  )}`}
-                >
-                  {selected.severity}
-                </span>
-              </div>
-
-              <div>
-                <p className="text-slate-500">Risk Score</p>
-                <p>{selected.riskScore}</p>
-              </div>
-
-              <div>
-                <p className="text-slate-500">Status</p>
-                <p className="capitalize">{selected.status}</p>
-              </div>
-
-              <div>
-                <p className="text-slate-500">Outcome</p>
-                <p className="capitalize">{selected.outcome}</p>
-              </div>
-            </div>
-
-            <div>
-              <p className="text-slate-500">Flagged</p>
-              <p>{selected.flagged ? "Yes" : "No"}</p>
-            </div>
-
-            {selected.reason && (
-              <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4">
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-rose-300">
-                  Flag Reason
-                </p>
-                <p className="text-sm text-rose-100">{selected.reason}</p>
-              </div>
-            )}
-
-            {selected.metadata && (
-              <div>
-                <p className="mb-2 text-slate-500">Metadata</p>
-                <pre className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 p-4 text-xs text-slate-300">
-                  {JSON.stringify(JSON.parse(selected.metadata), null, 2)}
-                </pre>
-              </div>
-            )}
           </div>
         </div>
       )}
