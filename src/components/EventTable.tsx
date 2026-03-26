@@ -2,7 +2,11 @@
 
 import { useMemo, useState } from "react";
 import type { AuditEvent } from "@prisma/client";
-import { getDetectionLabels } from "@/lib/detection";
+import {
+  getDetectionLabels,
+  getInvestigationPriority,
+  getPriorityScore,
+} from "@/lib/detection";
 
 function severityBadge(severity: string) {
   const styles: Record<string, string> = {
@@ -32,6 +36,29 @@ function anomalyBadge(label: string) {
   };
 
   return styles[label] ?? "bg-white/10 text-white ring-1 ring-white/20";
+}
+
+function priorityBadge(priority: string) {
+  const styles: Record<string, string> = {
+    low: "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30",
+    medium: "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",
+    high: "bg-orange-500/15 text-orange-300 ring-1 ring-orange-500/30",
+    critical: "bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/30",
+  };
+
+  return styles[priority] ?? "bg-white/10 text-white ring-1 ring-white/20";
+}
+
+function rowPriorityStyle(priority: string) {
+  if (priority === "critical") {
+    return "bg-rose-500/5 hover:bg-rose-500/10";
+  }
+
+  if (priority === "high") {
+    return "bg-orange-500/5 hover:bg-orange-500/10";
+  }
+
+  return "hover:bg-slate-800/40";
 }
 
 function getInvestigationSummary(event: AuditEvent, relatedEvents: AuditEvent[]) {
@@ -149,6 +176,7 @@ export default function EventTable({ events }: { events: AuditEvent[] }) {
               <th className="px-5 py-3 font-medium">Action</th>
               <th className="px-5 py-3 font-medium">Resource</th>
               <th className="px-5 py-3 font-medium">Anomaly</th>
+              <th className="px-5 py-3 font-medium">Priority</th>
               <th className="px-5 py-3 font-medium">Severity</th>
               <th className="px-5 py-3 font-medium">Risk</th>
               <th className="px-5 py-3 font-medium">Status</th>
@@ -158,12 +186,13 @@ export default function EventTable({ events }: { events: AuditEvent[] }) {
           <tbody className="divide-y divide-slate-800">
             {filteredEvents.map((event) => {
               const detections = getDetectionLabels(event);
+              const priority = getInvestigationPriority(event);
 
               return (
                 <tr
                   key={event.id}
                   onClick={() => setSelected(event)}
-                  className="cursor-pointer hover:bg-slate-800/40"
+                  className={`cursor-pointer ${rowPriorityStyle(priority)}`}
                 >
                   <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-300">
                     {new Date(event.timestamp).toLocaleString()}
@@ -199,6 +228,15 @@ export default function EventTable({ events }: { events: AuditEvent[] }) {
                   </td>
                   <td className="px-5 py-4 text-sm">
                     <span
+                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${priorityBadge(
+                        priority
+                      )}`}
+                    >
+                      {priority}
+                    </span>
+                  </td>
+                  <td className="px-5 py-4 text-sm">
+                    <span
                       className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${severityBadge(
                         event.severity
                       )}`}
@@ -219,7 +257,7 @@ export default function EventTable({ events }: { events: AuditEvent[] }) {
             {filteredEvents.length === 0 && (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={9}
                   className="px-5 py-10 text-center text-sm text-slate-500"
                 >
                   No events match your current filters.
@@ -316,6 +354,22 @@ export default function EventTable({ events }: { events: AuditEvent[] }) {
                 </div>
               </div>
 
+              <div>
+                <p className="mb-2 text-slate-500">Investigation Priority</p>
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${priorityBadge(
+                      getInvestigationPriority(selected)
+                    )}`}
+                  >
+                    {getInvestigationPriority(selected)}
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    Score: {getPriorityScore(selected)}/100
+                  </span>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-slate-500">Severity</p>
@@ -382,6 +436,7 @@ export default function EventTable({ events }: { events: AuditEvent[] }) {
                 {selectedRelatedEvents.map((event, index) => {
                   const detections = getDetectionLabels(event);
                   const isSelected = event.id === selected.id;
+                  const priority = getInvestigationPriority(event);
 
                   return (
                     <div key={event.id} className="relative pl-6">
@@ -401,7 +456,11 @@ export default function EventTable({ events }: { events: AuditEvent[] }) {
                         className={`rounded-2xl border p-4 ${
                           isSelected
                             ? "border-cyan-500/30 bg-cyan-500/10"
-                            : "border-slate-800 bg-slate-950/60"
+                            : priority === "critical"
+                              ? "border-rose-500/20 bg-rose-500/5"
+                              : priority === "high"
+                                ? "border-orange-500/20 bg-orange-500/5"
+                                : "border-slate-800 bg-slate-950/60"
                         }`}
                       >
                         <div className="mb-2 flex items-start justify-between gap-4">
@@ -414,13 +473,22 @@ export default function EventTable({ events }: { events: AuditEvent[] }) {
                             </p>
                           </div>
 
-                          <span
-                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${severityBadge(
-                              event.severity
-                            )}`}
-                          >
-                            {event.severity}
-                          </span>
+                          <div className="flex flex-col items-end gap-2">
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${priorityBadge(
+                                priority
+                              )}`}
+                            >
+                              {priority}
+                            </span>
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${severityBadge(
+                                event.severity
+                              )}`}
+                            >
+                              {event.severity}
+                            </span>
+                          </div>
                         </div>
 
                         <div className="mb-2 text-sm text-slate-300">

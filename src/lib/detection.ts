@@ -8,6 +8,8 @@ export type DetectionLabel =
   | "Unauthorized service access"
   | "Suspicious activity";
 
+export type InvestigationPriority = "low" | "medium" | "high" | "critical";
+
 export function getDetectionLabels(event: AuditEvent): DetectionLabel[] {
   const labels: DetectionLabel[] = [];
 
@@ -16,10 +18,7 @@ export function getDetectionLabels(event: AuditEvent): DetectionLabel[] {
   const actorType = event.actorType.toLowerCase();
   const location = event.location?.toLowerCase() ?? "";
 
-  if (
-    reason.includes("impossible travel") ||
-    location.includes("bucharest")
-  ) {
+  if (reason.includes("impossible travel") || location.includes("bucharest")) {
     labels.push("Impossible travel");
   }
 
@@ -30,24 +29,17 @@ export function getDetectionLabels(event: AuditEvent): DetectionLabel[] {
     labels.push("Privilege escalation");
   }
 
-  if (
-    action.includes("login_failure") &&
-    reason.includes("attempt")
-  ) {
+  if (action.includes("login_failure") && reason.includes("attempt")) {
     labels.push("Repeated auth failures");
   }
 
-  if (
-    action.includes("bulk_export") ||
-    reason.includes("large export")
-  ) {
+  if (action.includes("bulk_export") || reason.includes("large export")) {
     labels.push("Large export");
   }
 
   if (
     actorType === "service_account" &&
-    (action.includes("access_denied") ||
-      reason.includes("unauthorized"))
+    (action.includes("access_denied") || reason.includes("unauthorized"))
   ) {
     labels.push("Unauthorized service access");
   }
@@ -57,4 +49,52 @@ export function getDetectionLabels(event: AuditEvent): DetectionLabel[] {
   }
 
   return labels;
+}
+
+export function getPriorityScore(event: AuditEvent): number {
+  const detections = getDetectionLabels(event);
+
+  let score = event.riskScore;
+
+  if (event.flagged) score += 10;
+  if (event.severity === "critical") score += 25;
+  if (event.severity === "high") score += 15;
+  if (event.status === "open") score += 10;
+  if (event.status === "investigating") score += 5;
+
+  for (const detection of detections) {
+    switch (detection) {
+      case "Impossible travel":
+        score += 30;
+        break;
+      case "Privilege escalation":
+        score += 25;
+        break;
+      case "Unauthorized service access":
+        score += 20;
+        break;
+      case "Repeated auth failures":
+        score += 15;
+        break;
+      case "Large export":
+        score += 15;
+        break;
+      case "Suspicious activity":
+        score += 10;
+        break;
+    }
+  }
+
+  return Math.min(score, 100);
+}
+
+export function getInvestigationPriority(
+  event: AuditEvent
+): InvestigationPriority {
+  const score = getPriorityScore(event);
+
+  if (score >= 90) return "critical";
+  if (score >= 70) return "high";
+  if (score >= 40) return "medium";
+  return "low";
 }
