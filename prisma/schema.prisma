@@ -1,0 +1,34 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model AuditEvent {
+  id           String   @id @default(cuid())
+  timestamp    DateTime
+  actor        String
+  actorType    String
+  action       String
+  resource     String
+  resourceType String
+  ipAddress    String
+  location     String?
+  userAgent    String?
+  severity     String
+  status       String
+  outcome      String
+  riskScore    Int
+  flagged      Boolean  @default(false)
+  reason       String?
+  metadata     String?
+  createdAt    DateTime @default(now())
+
+  @@index([timestamp])
+  @@index([actor])
+  @@index([action])
+  @@index([severity])
+  @@index([flagged])
+}
