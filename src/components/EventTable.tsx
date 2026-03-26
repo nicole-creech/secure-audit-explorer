@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { AuditEvent } from "@prisma/client";
+import { getDetectionLabels } from "@/lib/detection";
 
 function severityBadge(severity: string) {
   const styles: Record<string, string> = {
@@ -12,6 +13,25 @@ function severityBadge(severity: string) {
   };
 
   return styles[severity] ?? "bg-white/10 text-white ring-1 ring-white/20";
+}
+
+function anomalyBadge(label: string) {
+  const styles: Record<string, string> = {
+    "Impossible travel":
+      "bg-fuchsia-500/15 text-fuchsia-300 ring-1 ring-fuchsia-500/30",
+    "Privilege escalation":
+      "bg-orange-500/15 text-orange-300 ring-1 ring-orange-500/30",
+    "Repeated auth failures":
+      "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",
+    "Large export":
+      "bg-cyan-500/15 text-cyan-300 ring-1 ring-cyan-500/30",
+    "Unauthorized service access":
+      "bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/30",
+    "Suspicious activity":
+      "bg-slate-500/15 text-slate-300 ring-1 ring-slate-500/30",
+  };
+
+  return styles[label] ?? "bg-white/10 text-white ring-1 ring-white/20";
 }
 
 export default function EventTable({ events }: { events: AuditEvent[] }) {
@@ -91,6 +111,7 @@ export default function EventTable({ events }: { events: AuditEvent[] }) {
               <th className="px-5 py-3 font-medium">Actor</th>
               <th className="px-5 py-3 font-medium">Action</th>
               <th className="px-5 py-3 font-medium">Resource</th>
+              <th className="px-5 py-3 font-medium">Anomaly</th>
               <th className="px-5 py-3 font-medium">Severity</th>
               <th className="px-5 py-3 font-medium">Risk</th>
               <th className="px-5 py-3 font-medium">Status</th>
@@ -98,48 +119,70 @@ export default function EventTable({ events }: { events: AuditEvent[] }) {
           </thead>
 
           <tbody className="divide-y divide-slate-800">
-            {filteredEvents.map((event) => (
-              <tr
-                key={event.id}
-                onClick={() => setSelected(event)}
-                className="cursor-pointer hover:bg-slate-800/40"
-              >
-                <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-300">
-                  {new Date(event.timestamp).toLocaleString()}
-                </td>
-                <td className="px-5 py-4 text-sm font-medium text-slate-100">
-                  <div>{event.actor}</div>
-                  <div className="text-xs text-slate-500">{event.ipAddress}</div>
-                </td>
-                <td className="px-5 py-4 text-sm text-slate-300">
-                  {event.action}
-                </td>
-                <td className="px-5 py-4 text-sm text-slate-300">
-                  <div>{event.resource}</div>
-                  <div className="text-xs text-slate-500">{event.resourceType}</div>
-                </td>
-                <td className="px-5 py-4 text-sm">
-                  <span
-                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${severityBadge(
-                      event.severity
-                    )}`}
-                  >
-                    {event.severity}
-                  </span>
-                </td>
-                <td className="px-5 py-4 text-sm text-slate-300">
-                  {event.riskScore}
-                </td>
-                <td className="px-5 py-4 text-sm text-slate-300 capitalize">
-                  {event.status}
-                </td>
-              </tr>
-            ))}
+            {filteredEvents.map((event) => {
+              const detections = getDetectionLabels(event);
+
+              return (
+                <tr
+                  key={event.id}
+                  onClick={() => setSelected(event)}
+                  className="cursor-pointer hover:bg-slate-800/40"
+                >
+                  <td className="whitespace-nowrap px-5 py-4 text-sm text-slate-300">
+                    {new Date(event.timestamp).toLocaleString()}
+                  </td>
+                  <td className="px-5 py-4 text-sm font-medium text-slate-100">
+                    <div>{event.actor}</div>
+                    <div className="text-xs text-slate-500">{event.ipAddress}</div>
+                  </td>
+                  <td className="px-5 py-4 text-sm text-slate-300">
+                    {event.action}
+                  </td>
+                  <td className="px-5 py-4 text-sm text-slate-300">
+                    <div>{event.resource}</div>
+                    <div className="text-xs text-slate-500">{event.resourceType}</div>
+                  </td>
+                  <td className="px-5 py-4 text-sm">
+                    <div className="flex flex-wrap gap-2">
+                      {detections.length > 0 ? (
+                        detections.map((label) => (
+                          <span
+                            key={label}
+                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${anomalyBadge(
+                              label
+                            )}`}
+                          >
+                            {label}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-xs text-slate-500">None</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-5 py-4 text-sm">
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${severityBadge(
+                        event.severity
+                      )}`}
+                    >
+                      {event.severity}
+                    </span>
+                  </td>
+                  <td className="px-5 py-4 text-sm text-slate-300">
+                    {event.riskScore}
+                  </td>
+                  <td className="px-5 py-4 text-sm text-slate-300 capitalize">
+                    {event.status}
+                  </td>
+                </tr>
+              );
+            })}
 
             {filteredEvents.length === 0 && (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   className="px-5 py-10 text-center text-sm text-slate-500"
                 >
                   No events match your current filters.
@@ -202,6 +245,26 @@ export default function EventTable({ events }: { events: AuditEvent[] }) {
             <div>
               <p className="text-slate-500">User Agent</p>
               <p>{selected.userAgent ?? "Unknown"}</p>
+            </div>
+
+            <div>
+              <p className="mb-2 text-slate-500">Detections</p>
+              <div className="flex flex-wrap gap-2">
+                {getDetectionLabels(selected).length > 0 ? (
+                  getDetectionLabels(selected).map((label) => (
+                    <span
+                      key={label}
+                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${anomalyBadge(
+                        label
+                      )}`}
+                    >
+                      {label}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-xs text-slate-500">None</span>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
