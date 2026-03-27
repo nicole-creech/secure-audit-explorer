@@ -9,7 +9,64 @@ const adapter = new PrismaBetterSqlite3({
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
+  await prisma.analystNote.deleteMany();
+  await prisma.alertCase.deleteMany();
+  await prisma.detectionRule.deleteMany();
   await prisma.auditEvent.deleteMany();
+
+  // Detection rules
+  await prisma.detectionRule.createMany({
+    data: [
+      {
+        name: "Suspicious Access",
+        description: "Alert on suspicious resource access",
+        field: "resource",
+        operator: "contains",
+        value: "admin",
+        severity: "high",
+      },
+      {
+        name: "Impossible Travel",
+        description: "Alert on impossible travel login attempts",
+        field: "location",
+        operator: "impossible_travel",
+        value: "true",
+        severity: "critical",
+      },
+      {
+        name: "Bulk Export",
+        description: "Alert on large data exports",
+        field: "action",
+        operator: "=",
+        value: "bulk_export",
+        severity: "high",
+      },
+    ],
+  });
+
+  // Alert cases
+  await prisma.alertCase.createMany({
+    data: [
+      {
+        alertKey: "case-001",
+        title: "Suspicious Admin Access",
+        actor: "ncreech",
+        detectionType: "Suspicious Access",
+        status: "open",
+        owner: "analyst1",
+        disposition: null,
+      },
+      {
+        alertKey: "case-002",
+        title: "Impossible Travel Login",
+        actor: "ncreech",
+        detectionType: "Impossible Travel",
+        status: "open",
+        owner: "analyst2",
+        disposition: null,
+      },
+    ],
+  });
 
   await prisma.auditEvent.createMany({
     data: [

@@ -26,6 +26,12 @@ model AuditEvent {
   metadata     String?
   createdAt    DateTime @default(now())
 
+  tags         String? // JSON array of tags
+
+  // Self-relation for linking related events (implicit many-to-many)
+  relatedEvents AuditEvent[] @relation("RelatedEvents")
+  relatedByEvents AuditEvent[] @relation("RelatedEvents")
+
   notes AnalystNote[]
 
   @@index([timestamp])

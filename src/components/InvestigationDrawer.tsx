@@ -21,6 +21,8 @@ type AuditEvent = {
   reason?: string | null;
   metadata?: string | null;
   createdAt: string | Date;
+  tags?: string[];
+  relatedEvents?: { id: string; action: string; }[];
 };
 
 type AnalystNote = {
@@ -47,6 +49,138 @@ export default function InvestigationDrawer({
   const [isLoadingNotes, setIsLoadingNotes] = useState(false);
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
+  const [status, setStatus] = useState(event?.status || "open");
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [tags, setTags] = useState<string[]>(event?.tags || []);
+  const [newTag, setNewTag] = useState("");
+  const [isUpdatingTags, setIsUpdatingTags] = useState(false);
+  const [tagsError, setTagsError] = useState<string | null>(null);
+  const [relatedEvents, setRelatedEvents] = useState<{ id: string; action: string }[]>(event?.relatedEvents || []);
+  const [relatedIdInput, setRelatedIdInput] = useState("");
+  const [isUpdatingRelated, setIsUpdatingRelated] = useState(false);
+  const [relatedError, setRelatedError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setStatus(event?.status || "open");
+    setTags(event?.tags || []);
+    setRelatedEvents(event?.relatedEvents || []);
+  }, [event]);
+  async function handleStatusChange(newStatus: string) {
+    if (!event?.id || newStatus === status) return;
+    setIsUpdatingStatus(true);
+    setStatusError(null);
+    try {
+      const res = await fetch(`/api/events/${event.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus, tags, relatedEventIds: relatedEvents.map(e => e.id) }),
+      });
+      if (!res.ok) {
+        const errorBody = await res.json().catch(() => null);
+        throw new Error(errorBody?.error || "Failed to update status.");
+      }
+      setStatus(newStatus);
+    } catch (error) {
+      setStatusError(error instanceof Error ? error.message : "Failed to update status.");
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  }
+
+  async function handleAddTag() {
+    if (!event?.id || !newTag.trim() || tags.includes(newTag.trim())) return;
+    setIsUpdatingTags(true);
+    setTagsError(null);
+    const updatedTags = [...tags, newTag.trim()];
+    try {
+      const res = await fetch(`/api/events/${event.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tags: updatedTags, status, relatedEventIds: relatedEvents.map(e => e.id) }),
+      });
+      if (!res.ok) {
+        const errorBody = await res.json().catch(() => null);
+        throw new Error(errorBody?.error || "Failed to update tags.");
+      }
+      setTags(updatedTags);
+      setNewTag("");
+    } catch (error) {
+      setTagsError(error instanceof Error ? error.message : "Failed to update tags.");
+    } finally {
+      setIsUpdatingTags(false);
+    }
+  }
+
+  async function handleRemoveTag(tag: string) {
+    if (!event?.id) return;
+    setIsUpdatingTags(true);
+    setTagsError(null);
+    const updatedTags = tags.filter(t => t !== tag);
+    try {
+      const res = await fetch(`/api/events/${event.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tags: updatedTags, status, relatedEventIds: relatedEvents.map(e => e.id) }),
+      });
+      if (!res.ok) {
+        const errorBody = await res.json().catch(() => null);
+        throw new Error(errorBody?.error || "Failed to update tags.");
+      }
+      setTags(updatedTags);
+    } catch (error) {
+      setTagsError(error instanceof Error ? error.message : "Failed to update tags.");
+    } finally {
+      setIsUpdatingTags(false);
+    }
+  }
+
+  async function handleAddRelatedEvent() {
+    if (!event?.id || !relatedIdInput.trim() || relatedEvents.some(e => e.id === relatedIdInput.trim()) || relatedIdInput.trim() === event.id) return;
+    setIsUpdatingRelated(true);
+    setRelatedError(null);
+    const updatedRelated = [...relatedEvents, { id: relatedIdInput.trim(), action: "" }];
+    try {
+      const res = await fetch(`/api/events/${event.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ relatedEventIds: updatedRelated.map(e => e.id), status, tags }),
+      });
+      if (!res.ok) {
+        const errorBody = await res.json().catch(() => null);
+        throw new Error(errorBody?.error || "Failed to update related events.");
+      }
+      setRelatedEvents(updatedRelated);
+      setRelatedIdInput("");
+    } catch (error) {
+      setRelatedError(error instanceof Error ? error.message : "Failed to update related events.");
+    } finally {
+      setIsUpdatingRelated(false);
+    }
+  }
+
+  async function handleRemoveRelatedEvent(id: string) {
+    if (!event?.id) return;
+    setIsUpdatingRelated(true);
+    setRelatedError(null);
+    const updatedRelated = relatedEvents.filter(e => e.id !== id);
+    try {
+      const res = await fetch(`/api/events/${event.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ relatedEventIds: updatedRelated.map(e => e.id), status, tags }),
+      });
+      if (!res.ok) {
+        const errorBody = await res.json().catch(() => null);
+        throw new Error(errorBody?.error || "Failed to update related events.");
+      }
+      setRelatedEvents(updatedRelated);
+    } catch (error) {
+      setRelatedError(error instanceof Error ? error.message : "Failed to update related events.");
+    } finally {
+      setIsUpdatingRelated(false);
+    }
+  }
 
   useEffect(() => {
     if (!event?.id || !open) {
@@ -63,6 +197,7 @@ export default function InvestigationDrawer({
         setIsLoadingNotes(true);
         setNotesError(null);
 
+        if (!event?.id) return;
         const res = await fetch(`/api/events/${event.id}/notes`, {
           cache: "no-store",
         });
@@ -162,6 +297,59 @@ export default function InvestigationDrawer({
 
         <div className="space-y-6 px-6 py-6">
           <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+            {/* Tag management */}
+            <div className="mb-4">
+              <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">Tags</h3>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {tags.map(tag => (
+                  <span key={tag} className="inline-flex items-center rounded bg-blue-900/40 px-2 py-1 text-xs text-blue-200">
+                    {tag}
+                    <button onClick={() => handleRemoveTag(tag)} className="ml-1 text-blue-300 hover:text-red-400" disabled={isUpdatingTags}>×</button>
+                  </span>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newTag}
+                  onChange={e => setNewTag(e.target.value)}
+                  className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-100"
+                  placeholder="Add tag"
+                  disabled={isUpdatingTags}
+                  onKeyDown={e => { if (e.key === 'Enter') handleAddTag(); }}
+                />
+                <button onClick={handleAddTag} disabled={isUpdatingTags || !newTag.trim()} className="rounded bg-blue-700 px-2 py-1 text-xs text-white">Add</button>
+              </div>
+              {isUpdatingTags && <span className="text-xs text-blue-400 ml-2">Updating...</span>}
+              {tagsError && <span className="text-xs text-red-400 ml-2">{tagsError}</span>}
+            </div>
+
+            {/* Related events management */}
+            <div className="mb-4">
+              <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">Related Events</h3>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {relatedEvents.map(ev => (
+                  <span key={ev.id} className="inline-flex items-center rounded bg-green-900/40 px-2 py-1 text-xs text-green-200">
+                    {ev.id}
+                    <button onClick={() => handleRemoveRelatedEvent(ev.id)} className="ml-1 text-green-300 hover:text-red-400" disabled={isUpdatingRelated}>×</button>
+                  </span>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={relatedIdInput}
+                  onChange={e => setRelatedIdInput(e.target.value)}
+                  className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-100"
+                  placeholder="Add related event ID"
+                  disabled={isUpdatingRelated}
+                  onKeyDown={e => { if (e.key === 'Enter') handleAddRelatedEvent(); }}
+                />
+                <button onClick={handleAddRelatedEvent} disabled={isUpdatingRelated || !relatedIdInput.trim()} className="rounded bg-green-700 px-2 py-1 text-xs text-white">Add</button>
+              </div>
+              {isUpdatingRelated && <span className="text-xs text-green-400 ml-2">Updating...</span>}
+              {relatedError && <span className="text-xs text-red-400 ml-2">{relatedError}</span>}
+            </div>
             <h3 className="mb-3 text-sm font-semibold text-zinc-100">
               Event Details
             </h3>
@@ -176,7 +364,21 @@ export default function InvestigationDrawer({
               <Detail label="Location" value={event.location || "—"} />
               <Detail label="User Agent" value={event.userAgent || "—"} />
               <Detail label="Severity" value={event.severity} />
-              <Detail label="Status" value={event.status} />
+              <div className="flex flex-col gap-1">
+                <label className="text-xs uppercase tracking-wide text-zinc-500">Status</label>
+                <select
+                  className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-zinc-100 focus:border-blue-500 focus:outline-none"
+                  value={status}
+                  onChange={e => handleStatusChange(e.target.value)}
+                  disabled={isUpdatingStatus}
+                >
+                  <option value="open">Open</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="closed">Closed</option>
+                </select>
+                {isUpdatingStatus && <span className="text-xs text-blue-400">Updating...</span>}
+                {statusError && <span className="text-xs text-red-400">{statusError}</span>}
+              </div>
               <Detail label="Outcome" value={event.outcome} />
               <Detail label="Risk Score" value={String(event.riskScore)} />
               <Detail
