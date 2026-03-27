@@ -1,12 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { AuditEvent } from "@prisma/client";
+import { useEffect, useMemo, useState } from "react";
+import type { AuditEventView } from "@/lib/types";
 import {
   getDetectionLabels,
   getInvestigationPriority,
   getPriorityScore,
 } from "@/lib/detection";
+
+type AnalystNote = {
+  id: string;
+  eventId: string;
+  content: string;
+  author: string;
+  createdAt: string;
+};
 
 function severityBadge(severity: string) {
   const styles: Record<string, string> = {
@@ -61,7 +69,10 @@ function rowPriorityStyle(priority: string) {
   return "hover:bg-slate-800/40";
 }
 
-function getInvestigationSummary(event: AuditEvent, relatedEvents: AuditEvent[]) {
+function getInvestigationSummary(
+  event: AuditEventView,
+  relatedEvents: AuditEventView[]
+) {
   const detections = getDetectionLabels(event);
   const flaggedCount = relatedEvents.filter((item) => item.flagged).length;
   const criticalCount = relatedEvents.filter(
@@ -87,11 +98,17 @@ function getInvestigationSummary(event: AuditEvent, relatedEvents: AuditEvent[])
   return `This actor has ${relatedEvents.length} related events in the current dataset. Review the event sequence to understand whether the selected activity is isolated or part of a broader pattern.`;
 }
 
-export default function EventTable({ events }: { events: AuditEvent[] }) {
-  const [selected, setSelected] = useState<AuditEvent | null>(null);
+export default function EventTable({ events }: { events: AuditEventView[] }) {
+  const [selected, setSelected] = useState<AuditEventView | null>(null);
   const [query, setQuery] = useState("");
   const [severity, setSeverity] = useState("all");
   const [flaggedOnly, setFlaggedOnly] = useState(false);
+
+  const [notes, setNotes] = useState<AnalystNote[]>([]);
+  const [newNote, setNewNote] = useState("");
+  const [isLoadingNotes, setIsLoadingNotes] = useState(false);
+  const [isSavingNote, setIsSavingNote] = useState(false);
+  const [notesError, setNotesError] = useState<string | null>(null);
 
   const filteredEvents = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -116,13 +133,100 @@ export default function EventTable({ events }: { events: AuditEvent[] }) {
   const selectedRelatedEvents = useMemo(() => {
     if (!selected) return [];
 
+    const selectedActor = selected.actor;
+
     return [...events]
-      .filter((event) => event.actor === selected.actor)
+      .filter((event) => event.actor === selectedActor)
       .sort(
         (a, b) =>
           new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
       );
   }, [events, selected]);
+
+  useEffect(() => {
+    if (!selected?.id) {
+      setNotes([]);
+      setNewNote("");
+      setNotesError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadNotes() {
+      try {
+        setIsLoadingNotes(true);
+        setNotesError(null);
+
+        const res = await fetch(`/api/events/${selected.id}/notes`, {
+          cache: "no-store",
+        });
+
+        if (!res.ok) {
+          throw new Error("Failed to load notes.");
+        }
+
+        const data: AnalystNote[] = await res.json();
+
+        if (!cancelled) {
+          setNotes(data);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setNotesError(
+            error instanceof Error ? error.message : "Failed to load notes."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingNotes(false);
+        }
+      }
+    }
+
+    loadNotes();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selected?.id]);
+
+  async function handleAddNote() {
+    if (!selected?.id || !newNote.trim()) return;
+
+    try {
+      setIsSavingNote(true);
+      setNotesError(null);
+
+      const res = await fetch(`/api/events/${selected.id}/notes`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          content: newNote,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorBody = await res.json().catch(() => null);
+        throw new Error(errorBody?.error || "Failed to save note.");
+      }
+
+      const created: AnalystNote = await res.json();
+
+      setNotes((prev) => [created, ...prev]);
+      setNewNote("");
+    } catch (error) {
+      setNotesError(
+        error instanceof Error ? error.message : "Failed to save note."
+      );
+    } finally {
+      setIsSavingNote(false);
+    }
+  }
+
+  const selectedEvent = selected;
 
   return (
     <div className="relative">
@@ -163,8 +267,12 @@ export default function EventTable({ events }: { events: AuditEvent[] }) {
       </div>
 
       <div className="mb-3 text-sm text-slate-400">
-        Showing <span className="font-medium text-slate-200">{filteredEvents.length}</span> of{" "}
-        <span className="font-medium text-slate-200">{events.length}</span> events
+        Showing{" "}
+        <span className="font-medium text-slate-200">
+          {filteredEvents.length}
+        </span>{" "}
+        of <span className="font-medium text-slate-200">{events.length}</span>{" "}
+        events
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-800">
@@ -199,14 +307,18 @@ export default function EventTable({ events }: { events: AuditEvent[] }) {
                   </td>
                   <td className="px-5 py-4 text-sm font-medium text-slate-100">
                     <div>{event.actor}</div>
-                    <div className="text-xs text-slate-500">{event.ipAddress}</div>
+                    <div className="text-xs text-slate-500">
+                      {event.ipAddress}
+                    </div>
                   </td>
                   <td className="px-5 py-4 text-sm text-slate-300">
                     {event.action}
                   </td>
                   <td className="px-5 py-4 text-sm text-slate-300">
                     <div>{event.resource}</div>
-                    <div className="text-xs text-slate-500">{event.resourceType}</div>
+                    <div className="text-xs text-slate-500">
+                      {event.resourceType}
+                    </div>
                   </td>
                   <td className="px-5 py-4 text-sm">
                     <div className="flex flex-wrap gap-2">
@@ -268,264 +380,365 @@ export default function EventTable({ events }: { events: AuditEvent[] }) {
         </table>
       </div>
 
-      {selected && (
-        <div className="fixed inset-y-0 right-0 z-50 w-full max-w-2xl overflow-y-auto border-l border-slate-800 bg-slate-900 p-6 shadow-2xl">
-          <div className="mb-6 flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-slate-100">
-              Investigation Workspace
-            </h2>
-            <button
-              onClick={() => setSelected(null)}
-              className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800"
-            >
-              Close
-            </button>
-          </div>
+      {selectedEvent && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-black/40"
+            onClick={() => setSelected(null)}
+          />
 
-          <div className="mb-6 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-cyan-300">
-              Investigation Summary
-            </p>
-            <p className="text-sm text-cyan-50">
-              {getInvestigationSummary(selected, selectedRelatedEvents)}
-            </p>
-          </div>
+          <div className="fixed inset-y-0 right-0 z-50 w-full max-w-2xl overflow-y-auto border-l border-slate-800 bg-slate-900 p-6 shadow-2xl">
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-slate-100">
+                Investigation Workspace
+              </h2>
+              <button
+                onClick={() => setSelected(null)}
+                className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800"
+              >
+                Close
+              </button>
+            </div>
 
-          <div className="grid gap-6 xl:grid-cols-[1fr_1.1fr]">
-            <div className="space-y-4 text-sm text-slate-300">
-              <div>
-                <p className="text-slate-500">Timestamp</p>
-                <p>{new Date(selected.timestamp).toLocaleString()}</p>
-              </div>
+            <div className="mb-6 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-cyan-300">
+                Investigation Summary
+              </p>
+              <p className="text-sm text-cyan-50">
+                {getInvestigationSummary(selectedEvent, selectedRelatedEvents)}
+              </p>
+            </div>
 
-              <div>
-                <p className="text-slate-500">Actor</p>
-                <p>{selected.actor}</p>
-              </div>
+            <div className="grid gap-6 xl:grid-cols-[1fr_1.1fr]">
+              <div className="space-y-4 text-sm text-slate-300">
+                <div>
+                  <p className="text-slate-500">Timestamp</p>
+                  <p>{new Date(selectedEvent.timestamp).toLocaleString()}</p>
+                </div>
 
-              <div>
-                <p className="text-slate-500">Actor Type</p>
-                <p className="capitalize">{selected.actorType.replaceAll("_", " ")}</p>
-              </div>
+                <div>
+                  <p className="text-slate-500">Actor</p>
+                  <p>{selectedEvent.actor}</p>
+                </div>
 
-              <div>
-                <p className="text-slate-500">Action</p>
-                <p>{selected.action}</p>
-              </div>
+                <div>
+                  <p className="text-slate-500">Actor Type</p>
+                  <p className="capitalize">
+                    {selectedEvent.actorType.replaceAll("_", " ")}
+                  </p>
+                </div>
 
-              <div>
-                <p className="text-slate-500">Resource</p>
-                <p>{selected.resource}</p>
-                <p className="text-xs text-slate-500">{selected.resourceType}</p>
-              </div>
+                <div>
+                  <p className="text-slate-500">Action</p>
+                  <p>{selectedEvent.action}</p>
+                </div>
 
-              <div>
-                <p className="text-slate-500">IP Address</p>
-                <p>{selected.ipAddress}</p>
-              </div>
+                <div>
+                  <p className="text-slate-500">Resource</p>
+                  <p>{selectedEvent.resource}</p>
+                  <p className="text-xs text-slate-500">
+                    {selectedEvent.resourceType}
+                  </p>
+                </div>
 
-              <div>
-                <p className="text-slate-500">Location</p>
-                <p>{selected.location ?? "Unknown"}</p>
-              </div>
+                <div>
+                  <p className="text-slate-500">IP Address</p>
+                  <p>{selectedEvent.ipAddress}</p>
+                </div>
 
-              <div>
-                <p className="text-slate-500">User Agent</p>
-                <p>{selected.userAgent ?? "Unknown"}</p>
-              </div>
+                <div>
+                  <p className="text-slate-500">Location</p>
+                  <p>{selectedEvent.location ?? "Unknown"}</p>
+                </div>
 
-              <div>
-                <p className="mb-2 text-slate-500">Detections</p>
-                <div className="flex flex-wrap gap-2">
-                  {getDetectionLabels(selected).length > 0 ? (
-                    getDetectionLabels(selected).map((label) => (
-                      <span
-                        key={label}
-                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${anomalyBadge(
-                          label
-                        )}`}
+                <div>
+                  <p className="text-slate-500">User Agent</p>
+                  <p>{selectedEvent.userAgent ?? "Unknown"}</p>
+                </div>
+
+                <div>
+                  <p className="mb-2 text-slate-500">Detections</p>
+                  <div className="flex flex-wrap gap-2">
+                    {getDetectionLabels(selectedEvent).length > 0 ? (
+                      getDetectionLabels(selectedEvent).map((label) => (
+                        <span
+                          key={label}
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${anomalyBadge(
+                            label
+                          )}`}
+                        >
+                          {label}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-xs text-slate-500">None</span>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="mb-2 text-slate-500">Investigation Priority</p>
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${priorityBadge(
+                        getInvestigationPriority(selectedEvent)
+                      )}`}
+                    >
+                      {getInvestigationPriority(selectedEvent)}
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      Score: {getPriorityScore(selectedEvent)}/100
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-slate-500">Severity</p>
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${severityBadge(
+                        selectedEvent.severity
+                      )}`}
+                    >
+                      {selectedEvent.severity}
+                    </span>
+                  </div>
+
+                  <div>
+                    <p className="text-slate-500">Risk Score</p>
+                    <p>{selectedEvent.riskScore}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-slate-500">Status</p>
+                    <p className="capitalize">{selectedEvent.status}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-slate-500">Outcome</p>
+                    <p className="capitalize">{selectedEvent.outcome}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-slate-500">Flagged</p>
+                  <p>{selectedEvent.flagged ? "Yes" : "No"}</p>
+                </div>
+
+                {selectedEvent.reason && (
+                  <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4">
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-rose-300">
+                      Flag Reason
+                    </p>
+                    <p className="text-sm text-rose-100">
+                      {selectedEvent.reason}
+                    </p>
+                  </div>
+                )}
+
+                {selectedEvent.metadata && (
+                  <div>
+                    <p className="mb-2 text-slate-500">Metadata</p>
+                    <pre className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 p-4 text-xs text-slate-300">
+                      {selectedEvent.metadata}
+                    </pre>
+                  </div>
+                )}
+
+                <div className="border-t border-slate-800 pt-6">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-slate-100">
+                      Analyst Notes
+                    </h3>
+                    <span className="text-xs text-slate-500">
+                      {notes.length} {notes.length === 1 ? "note" : "notes"}
+                    </span>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                    <label
+                      htmlFor="analyst-note"
+                      className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500"
+                    >
+                      Add note
+                    </label>
+
+                    <textarea
+                      id="analyst-note"
+                      value={newNote}
+                      onChange={(e) => setNewNote(e.target.value)}
+                      rows={4}
+                      placeholder="Document findings, next steps, escalation context, or analyst observations..."
+                      className="w-full resize-none rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
+                    />
+
+                    <div className="mt-3 flex items-center justify-between">
+                      <p className="text-xs text-slate-500">
+                        Notes persist to this audit event.
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={handleAddNote}
+                        disabled={isSavingNote || !newNote.trim()}
+                        className="rounded-lg bg-cyan-500 px-3 py-2 text-sm font-medium text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {label}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-xs text-slate-500">None</span>
+                        {isSavingNote ? "Saving..." : "Add Note"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {notesError && (
+                    <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                      {notesError}
+                    </div>
+                  )}
+
+                  <div className="mt-4 space-y-3">
+                    {isLoadingNotes ? (
+                      <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400">
+                        Loading notes...
+                      </div>
+                    ) : notes.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-500">
+                        No analyst notes yet for this event.
+                      </div>
+                    ) : (
+                      notes.map((note) => (
+                        <div
+                          key={note.id}
+                          className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4"
+                        >
+                          <div className="mb-2 flex items-center justify-between gap-3">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                              {note.author}
+                            </span>
+                            <span className="text-xs text-slate-500">
+                              {new Date(note.createdAt).toLocaleString()}
+                            </span>
+                          </div>
+
+                          <p className="whitespace-pre-wrap text-sm leading-6 text-slate-200">
+                            {note.content}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-3">
+                  <h3 className="text-lg font-semibold text-slate-100">
+                    Actor Timeline
+                  </h3>
+                  <p className="text-sm text-slate-400">
+                    Related activity for{" "}
+                    <span className="font-medium text-slate-200">
+                      {selectedEvent.actor}
+                    </span>
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  {selectedRelatedEvents.map((relatedEvent, index) => {
+                    const detections = getDetectionLabels(relatedEvent);
+                    const isSelected = relatedEvent.id === selectedEvent.id;
+                    const priority = getInvestigationPriority(relatedEvent);
+
+                    return (
+                      <div key={relatedEvent.id} className="relative pl-6">
+                        {index < selectedRelatedEvents.length - 1 && (
+                          <div className="absolute left-[10px] top-6 h-full w-px bg-slate-800" />
+                        )}
+
+                        <div
+                          className={`absolute left-0 top-1.5 h-5 w-5 rounded-full border-2 ${
+                            isSelected
+                              ? "border-cyan-400 bg-cyan-400/20"
+                              : "border-slate-600 bg-slate-900"
+                          }`}
+                        />
+
+                        <div
+                          className={`rounded-2xl border p-4 ${
+                            isSelected
+                              ? "border-cyan-500/30 bg-cyan-500/10"
+                              : priority === "critical"
+                                ? "border-rose-500/20 bg-rose-500/5"
+                                : priority === "high"
+                                  ? "border-orange-500/20 bg-orange-500/5"
+                                  : "border-slate-800 bg-slate-950/60"
+                          }`}
+                        >
+                          <div className="mb-2 flex items-start justify-between gap-4">
+                            <div>
+                              <p className="text-sm font-medium text-slate-100">
+                                {relatedEvent.action}
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                {new Date(
+                                  relatedEvent.timestamp
+                                ).toLocaleString()}
+                              </p>
+                            </div>
+
+                            <div className="flex flex-col items-end gap-2">
+                              <span
+                                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${priorityBadge(
+                                  priority
+                                )}`}
+                              >
+                                {priority}
+                              </span>
+                              <span
+                                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${severityBadge(
+                                  relatedEvent.severity
+                                )}`}
+                              >
+                                {relatedEvent.severity}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="mb-2 text-sm text-slate-300">
+                            <div>{relatedEvent.resource}</div>
+                            <div className="text-xs text-slate-500">
+                              {relatedEvent.resourceType} •{" "}
+                              {relatedEvent.ipAddress}
+                            </div>
+                          </div>
+
+                          {detections.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              {detections.map((label) => (
+                                <span
+                                  key={label}
+                                  className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${anomalyBadge(
+                                    label
+                                  )}`}
+                                >
+                                  {label}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {selectedRelatedEvents.length === 0 && (
+                    <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-500">
+                      No related timeline events found for this actor.
+                    </div>
                   )}
                 </div>
               </div>
-
-              <div>
-                <p className="mb-2 text-slate-500">Investigation Priority</p>
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${priorityBadge(
-                      getInvestigationPriority(selected)
-                    )}`}
-                  >
-                    {getInvestigationPriority(selected)}
-                  </span>
-                  <span className="text-xs text-slate-400">
-                    Score: {getPriorityScore(selected)}/100
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-slate-500">Severity</p>
-                  <span
-                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${severityBadge(
-                      selected.severity
-                    )}`}
-                  >
-                    {selected.severity}
-                  </span>
-                </div>
-
-                <div>
-                  <p className="text-slate-500">Risk Score</p>
-                  <p>{selected.riskScore}</p>
-                </div>
-
-                <div>
-                  <p className="text-slate-500">Status</p>
-                  <p className="capitalize">{selected.status}</p>
-                </div>
-
-                <div>
-                  <p className="text-slate-500">Outcome</p>
-                  <p className="capitalize">{selected.outcome}</p>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-slate-500">Flagged</p>
-                <p>{selected.flagged ? "Yes" : "No"}</p>
-              </div>
-
-              {selected.reason && (
-                <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4">
-                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-rose-300">
-                    Flag Reason
-                  </p>
-                  <p className="text-sm text-rose-100">{selected.reason}</p>
-                </div>
-              )}
-
-              {selected.metadata && (
-                <div>
-                  <p className="mb-2 text-slate-500">Metadata</p>
-                  <pre className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 p-4 text-xs text-slate-300">
-                    {JSON.stringify(JSON.parse(selected.metadata), null, 2)}
-                  </pre>
-                </div>
-              )}
-            </div>
-
-            <div>
-              <div className="mb-3">
-                <h3 className="text-lg font-semibold text-slate-100">
-                  Actor Timeline
-                </h3>
-                <p className="text-sm text-slate-400">
-                  Related activity for <span className="font-medium text-slate-200">{selected.actor}</span>
-                </p>
-              </div>
-
-              <div className="space-y-4">
-                {selectedRelatedEvents.map((event, index) => {
-                  const detections = getDetectionLabels(event);
-                  const isSelected = event.id === selected.id;
-                  const priority = getInvestigationPriority(event);
-
-                  return (
-                    <div key={event.id} className="relative pl-6">
-                      {index < selectedRelatedEvents.length - 1 && (
-                        <div className="absolute left-[10px] top-6 h-full w-px bg-slate-800" />
-                      )}
-
-                      <div
-                        className={`absolute left-0 top-1.5 h-5 w-5 rounded-full border-2 ${
-                          isSelected
-                            ? "border-cyan-400 bg-cyan-400/20"
-                            : "border-slate-600 bg-slate-900"
-                        }`}
-                      />
-
-                      <div
-                        className={`rounded-2xl border p-4 ${
-                          isSelected
-                            ? "border-cyan-500/30 bg-cyan-500/10"
-                            : priority === "critical"
-                              ? "border-rose-500/20 bg-rose-500/5"
-                              : priority === "high"
-                                ? "border-orange-500/20 bg-orange-500/5"
-                                : "border-slate-800 bg-slate-950/60"
-                        }`}
-                      >
-                        <div className="mb-2 flex items-start justify-between gap-4">
-                          <div>
-                            <p className="text-sm font-medium text-slate-100">
-                              {event.action}
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              {new Date(event.timestamp).toLocaleString()}
-                            </p>
-                          </div>
-
-                          <div className="flex flex-col items-end gap-2">
-                            <span
-                              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${priorityBadge(
-                                priority
-                              )}`}
-                            >
-                              {priority}
-                            </span>
-                            <span
-                              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${severityBadge(
-                                event.severity
-                              )}`}
-                            >
-                              {event.severity}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="mb-2 text-sm text-slate-300">
-                          <div>{event.resource}</div>
-                          <div className="text-xs text-slate-500">
-                            {event.resourceType} • {event.ipAddress}
-                          </div>
-                        </div>
-
-                        {detections.length > 0 && (
-                          <div className="flex flex-wrap gap-2">
-                            {detections.map((label) => (
-                              <span
-                                key={label}
-                                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${anomalyBadge(
-                                  label
-                                )}`}
-                              >
-                                {label}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {selectedRelatedEvents.length === 0 && (
-                  <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-500">
-                    No related timeline events found for this actor.
-                  </div>
-                )}
-              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

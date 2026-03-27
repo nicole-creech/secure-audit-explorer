@@ -1,10 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import EventTable from "@/components/EventTable";
-import type { AuditEvent } from "@prisma/client";
 import AnalyticsPanel from "@/components/AnalyticsPanel";
+import type { AuditEventView } from "@/lib/types";
 
 export default async function HomePage() {
-  const events: AuditEvent[] = await prisma.auditEvent.findMany({
+  const events = await prisma.auditEvent.findMany({
     orderBy: { timestamp: "desc" },
     take: 20,
   });
@@ -20,10 +20,15 @@ export default async function HomePage() {
     where: { severity: "critical" },
   });
 
+  const serializedEvents: AuditEventView[] = events.map((event) => ({
+    ...event,
+    timestamp: event.timestamp.toISOString(),
+    createdAt: event.createdAt.toISOString(),
+  }));
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
       <div className="mx-auto flex max-w-7xl flex-col gap-8 px-6 py-10">
-        {/* Header */}
         <div className="space-y-3">
           <p className="text-sm font-medium uppercase tracking-[0.2em] text-cyan-300">
             Secure Audit Log Explorer
@@ -37,7 +42,6 @@ export default async function HomePage() {
           </p>
         </div>
 
-        {/* Metrics */}
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm">
             <p className="text-sm text-slate-400">Total Events</p>
@@ -57,9 +61,8 @@ export default async function HomePage() {
           </div>
         </div>
 
-        <AnalyticsPanel events={events} />
-        
-        {/* Events Table */}
+        <AnalyticsPanel events={serializedEvents} />
+
         <section className="rounded-2xl border border-slate-800 bg-slate-900 shadow-sm">
           <div className="border-b border-slate-800 px-5 py-4">
             <h2 className="text-lg font-semibold">Recent Events</h2>
@@ -69,7 +72,7 @@ export default async function HomePage() {
           </div>
 
           <div className="p-5">
-            <EventTable events={events} />
+            <EventTable events={serializedEvents} />
           </div>
         </section>
       </div>
