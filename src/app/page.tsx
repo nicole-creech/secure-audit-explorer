@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import EventTable from "@/components/EventTable";
 import AnalyticsPanel from "@/components/AnalyticsPanel";
 import EventFilters from "@/components/EventFilters";
+import PaginationControls from "@/components/PaginationControls";
 import type { AuditEventView } from "@/lib/types";
 import type { Prisma } from "@prisma/client";
 
@@ -10,8 +11,20 @@ type HomePageProps = {
     q?: string;
     severity?: string;
     flagged?: string;
+    page?: string;
+    pageSize?: string;
+    sortBy?: string;
+    sortDir?: string;
   }>;
 };
+
+const ALLOWED_SORT_FIELDS = new Set([
+  "timestamp",
+  "severity",
+  "riskScore",
+  "actor",
+  "status",
+]);
 
 export default async function HomePage({ searchParams }: HomePageProps) {
   const params = await searchParams;
@@ -19,6 +32,14 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const query = params.q?.trim() ?? "";
   const severity = params.severity ?? "all";
   const flaggedOnly = params.flagged === "true";
+  const page = Math.max(1, Number(params.page ?? "1") || 1);
+  const pageSize = [10, 25, 50].includes(Number(params.pageSize))
+    ? Number(params.pageSize)
+    : 25;
+  const sortBy = ALLOWED_SORT_FIELDS.has(params.sortBy ?? "")
+    ? (params.sortBy as "timestamp" | "severity" | "riskScore" | "actor" | "status")
+    : "timestamp";
+  const sortDir = params.sortDir === "asc" ? "asc" : "desc";
 
   const where: Prisma.AuditEventWhereInput = {
     AND: [
@@ -37,33 +58,36 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     ],
   };
 
-  const [events, totalEvents, flaggedEvents, openEvents, criticalEvents] =
-    await Promise.all([
-      prisma.auditEvent.findMany({
-        where,
-        orderBy: { timestamp: "desc" },
-        take: 50,
-      }),
-      prisma.auditEvent.count({ where }),
-      prisma.auditEvent.count({
-        where: {
-          ...where,
-          flagged: true,
-        },
-      }),
-      prisma.auditEvent.count({
-        where: {
-          ...where,
-          status: { in: ["open", "investigating"] },
-        },
-      }),
-      prisma.auditEvent.count({
-        where: {
-          ...where,
-          severity: "critical",
-        },
-      }),
-    ]);
+  const totalMatchingEvents = await prisma.auditEvent.count({ where });
+  const totalPages = Math.max(1, Math.ceil(totalMatchingEvents / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const skip = (safePage - 1) * pageSize;
+
+  const [events, flaggedEvents, openEvents, criticalEvents] = await Promise.all([
+    prisma.auditEvent.findMany({
+      where,
+      orderBy: {
+        [sortBy]: sortDir,
+      },
+      skip,
+      take: pageSize,
+    }),
+    prisma.auditEvent.count({
+      where: {
+        AND: [...(where.AND ?? []), { flagged: true }],
+      },
+    }),
+    prisma.auditEvent.count({
+      where: {
+        AND: [...(where.AND ?? []), { status: { in: ["open", "investigating"] } }],
+      },
+    }),
+    prisma.auditEvent.count({
+      where: {
+        AND: [...(where.AND ?? []), { severity: "critical" }],
+      },
+    }),
+  ]);
 
   const serializedEvents: AuditEventView[] = events.map((event) => ({
     ...event,
@@ -91,12 +115,15 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           initialQuery={query}
           initialSeverity={severity}
           initialFlaggedOnly={flaggedOnly}
+          initialSortBy={sortBy}
+          initialSortDir={sortDir}
+          initialPageSize={pageSize}
         />
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm">
             <p className="text-sm text-slate-400">Matching Events</p>
-            <p className="mt-2 text-3xl font-semibold">{totalEvents}</p>
+            <p className="mt-2 text-3xl font-semibold">{totalMatchingEvents}</p>
           </div>
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm">
             <p className="text-sm text-slate-400">Flagged Matches</p>
@@ -118,12 +145,22 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           <div className="border-b border-slate-800 px-5 py-4">
             <h2 className="text-lg font-semibold">Recent Events</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Filtered audit activity returned directly from the server.
+              Filtered, sorted, and paginated audit activity returned directly from the server.
             </p>
           </div>
 
-          <div className="p-5">
+          <div className="space-y-5 p-5">
+            <PaginationControls
+              currentPage={safePage}
+              totalPages={totalPages}
+            />
+
             <EventTable events={serializedEvents} />
+
+            <PaginationControls
+              currentPage={safePage}
+              totalPages={totalPages}
+            />
           </div>
         </section>
       </div>

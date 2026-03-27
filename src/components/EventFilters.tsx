@@ -7,12 +7,18 @@ type EventFiltersProps = {
   initialQuery: string;
   initialSeverity: string;
   initialFlaggedOnly: boolean;
+  initialSortBy: string;
+  initialSortDir: string;
+  initialPageSize: number;
 };
 
 export default function EventFilters({
   initialQuery,
   initialSeverity,
   initialFlaggedOnly,
+  initialSortBy,
+  initialSortDir,
+  initialPageSize,
 }: EventFiltersProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -21,6 +27,9 @@ export default function EventFilters({
   const [query, setQuery] = useState(initialQuery);
   const [severity, setSeverity] = useState(initialSeverity);
   const [flaggedOnly, setFlaggedOnly] = useState(initialFlaggedOnly);
+  const [sortBy, setSortBy] = useState(initialSortBy);
+  const [sortDir, setSortDir] = useState(initialSortDir);
+  const [pageSize, setPageSize] = useState(String(initialPageSize));
 
   function applyFilters() {
     const params = new URLSearchParams(searchParams.toString());
@@ -43,6 +52,26 @@ export default function EventFilters({
       params.delete("flagged");
     }
 
+    if (sortBy !== "timestamp") {
+      params.set("sortBy", sortBy);
+    } else {
+      params.delete("sortBy");
+    }
+
+    if (sortDir !== "desc") {
+      params.set("sortDir", sortDir);
+    } else {
+      params.delete("sortDir");
+    }
+
+    if (pageSize !== "25") {
+      params.set("pageSize", pageSize);
+    } else {
+      params.delete("pageSize");
+    }
+
+    params.delete("page");
+
     router.replace(`${pathname}?${params.toString()}`);
   }
 
@@ -50,6 +79,9 @@ export default function EventFilters({
     setQuery("");
     setSeverity("all");
     setFlaggedOnly(false);
+    setSortBy("timestamp");
+    setSortDir("desc");
+    setPageSize("25");
     router.replace(pathname);
   }
 
@@ -58,12 +90,12 @@ export default function EventFilters({
       <div className="mb-4">
         <h2 className="text-lg font-semibold text-slate-100">Filters</h2>
         <p className="mt-1 text-sm text-slate-400">
-          Query the dataset using server-side filtering.
+          Query, sort, and paginate the dataset from the server.
         </p>
       </div>
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-        <div className="flex-1">
+      <div className="grid gap-4 xl:grid-cols-6">
+        <div className="xl:col-span-2">
           <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
             Search
           </label>
@@ -76,7 +108,7 @@ export default function EventFilters({
           />
         </div>
 
-        <div className="w-full lg:w-56">
+        <div>
           <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
             Severity
           </label>
@@ -93,7 +125,55 @@ export default function EventFilters({
           </select>
         </div>
 
-        <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm text-slate-200">
+        <div>
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Sort By
+          </label>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm text-slate-100 focus:border-cyan-400 focus:outline-none"
+          >
+            <option value="timestamp">Timestamp</option>
+            <option value="severity">Severity</option>
+            <option value="riskScore">Risk Score</option>
+            <option value="actor">Actor</option>
+            <option value="status">Status</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Direction
+          </label>
+          <select
+            value={sortDir}
+            onChange={(e) => setSortDir(e.target.value)}
+            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm text-slate-100 focus:border-cyan-400 focus:outline-none"
+          >
+            <option value="desc">Descending</option>
+            <option value="asc">Ascending</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Page Size
+          </label>
+          <select
+            value={pageSize}
+            onChange={(e) => setPageSize(e.target.value)}
+            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm text-slate-100 focus:border-cyan-400 focus:outline-none"
+          >
+            <option value="10">10</option>
+            <option value="25">25</option>
+            <option value="50">50</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <label className="flex items-center gap-2 text-sm text-slate-200">
           <input
             type="checkbox"
             checked={flaggedOnly}
