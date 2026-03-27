@@ -5,6 +5,7 @@ import EventFilters from "@/components/EventFilters";
 import PaginationControls from "@/components/PaginationControls";
 import type { AuditEventView } from "@/lib/types";
 import type { Prisma } from "@prisma/client";
+import AlertFeed from "@/components/AlertFeed";
 
 type HomePageProps = {
   searchParams: Promise<{
@@ -138,6 +139,8 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             <p className="mt-2 text-3xl font-semibold">{criticalEvents}</p>
           </div>
         </div>
+
+        <AlertFeed events={serializedEvents} />
 
         <AnalyticsPanel events={serializedEvents} />
 
