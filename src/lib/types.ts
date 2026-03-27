@@ -29,4 +29,5 @@ export type AlertRequestBody = {
   sourceEventIds?: string[];
   owner?: string;
   disposition?: string;
+  status?: string;
 };

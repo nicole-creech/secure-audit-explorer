@@ -57,7 +57,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         : {},
       severity !== "all" ? { severity } : {},
       flaggedOnly ? { flagged: true } : {},
-    ],
+    ].filter(condition => Object.keys(condition).length > 0),
   };
 
   const totalMatchingEvents = await prisma.auditEvent.count({ where });
@@ -76,17 +76,26 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     }),
     prisma.auditEvent.count({
       where: {
-        AND: [...(where.AND ?? []), { flagged: true }],
+        AND: [
+          ...(where.AND as any[]),
+          { flagged: true }
+        ],
       },
     }),
     prisma.auditEvent.count({
       where: {
-        AND: [...(where.AND ?? []), { status: { in: ["open", "investigating"] } }],
+        AND: [
+          ...(where.AND as any[]),
+          { status: { in: ["open", "investigating"] } }
+        ],
       },
     }),
     prisma.auditEvent.count({
       where: {
-        AND: [...(where.AND ?? []), { severity: "critical" }],
+        AND: [
+          ...(where.AND as any[]),
+          { severity: "critical" }
+        ],
       },
     }),
   ]);
@@ -100,18 +109,35 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
       <div className="mx-auto flex max-w-7xl flex-col gap-8 px-6 py-10">
-        <div className="space-y-3">
-          <p className="text-sm font-medium uppercase tracking-[0.2em] text-cyan-300">
-            Secure Audit Log Explorer
-          </p>
-          <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-            Investigate suspicious activity across audit events
-          </h1>
-          <p className="max-w-3xl text-base text-slate-400 sm:text-lg">
-            A full-stack investigation workspace for analyzing authentication,
-            access, and privilege events across enterprise systems.
-          </p>
-        </div>
+        {/* Navigation Header */}
+        <nav className="flex items-center justify-between">
+          <div className="space-y-3">
+            <p className="text-sm font-medium uppercase tracking-[0.2em] text-cyan-300">
+              Secure Audit Log Explorer
+            </p>
+            <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
+              Investigate suspicious activity across audit events
+            </h1>
+            <p className="max-w-3xl text-base text-slate-400 sm:text-lg">
+              A full-stack investigation workspace for analyzing authentication,
+              access, and privilege events across enterprise systems.
+            </p>
+          </div>
+          <div className="flex gap-4">
+            <a
+              href="/rules"
+              className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 transition-colors"
+            >
+              Detection Rules
+            </a>
+            <a
+              href="/alert-cases"
+              className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-600 transition-colors"
+            >
+              Alert Cases
+            </a>
+          </div>
+        </nav>
 
         <EventFilters
           initialQuery={query}

@@ -1,6 +1,15 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
+import type { AuditEventView } from "@/lib/types";
+import type { DerivedAlert } from "@/lib/alerts";
+
+type AlertDetailDrawerProps = {
+  alert: DerivedAlert | null;
+  events: AuditEventView[];
+  open: boolean;
+  onClose: () => void;
+};
 
 type AlertNote = {
   id: string;

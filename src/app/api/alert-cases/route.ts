@@ -13,6 +13,21 @@ type AlertCaseData = {
   disposition?: string | null;
 };
 
+export async function GET() {
+  try {
+    const alertCases = await prisma.alertCase.findMany({
+      orderBy: { createdAt: "desc" },
+    });
+    return NextResponse.json(alertCases);
+  } catch (error) {
+    console.error("Error fetching alert cases:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch alert cases" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const body: AlertRequestBody = await req.json();

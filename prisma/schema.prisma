@@ -74,3 +74,21 @@ model Notification {
   @@index([alertKey])
   @@index([sentAt])
 }
+
+model DetectionRule {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  enabled     Boolean  @default(true)
+
+  field       String   // "action", "riskScore", etc
+  operator    String   // ">", "=", "contains"
+  value       String
+
+  threshold   Int?     // for threshold-based rules (e.g., count > 5)
+  timeWindow  Int?     // minutes (optional)
+
+  severity    String   // low, medium, high, critical
+
+  createdAt   DateTime @default(now())
+}
