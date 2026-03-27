@@ -6,6 +6,7 @@ import PaginationControls from "@/components/PaginationControls";
 import type { AuditEventView } from "@/lib/types";
 import type { Prisma } from "@prisma/client";
 import AlertFeed from "@/components/AlertFeed";
+import NotificationHistory from "@/components/NotificationHistory";
 
 type HomePageProps = {
   searchParams: Promise<{
@@ -143,6 +144,8 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         <AlertFeed events={serializedEvents} />
 
         <AnalyticsPanel events={serializedEvents} />
+
+        <NotificationHistory />
 
         <section className="rounded-2xl border border-slate-800 bg-slate-900 shadow-sm">
           <div className="border-b border-slate-800 px-5 py-4">

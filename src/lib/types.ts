@@ -18,3 +18,15 @@ export type AuditEventView = {
   metadata: string | null;
   createdAt: string;
 };
+
+export type AlertRequestBody = {
+  alertKey: string;
+  title: string;
+  actor: string;
+  detectionType: string;
+  priority?: "low" | "medium" | "high" | "critical";
+  eventCount?: number;
+  sourceEventIds?: string[];
+  owner?: string;
+  disposition?: string;
+};

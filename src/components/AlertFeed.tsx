@@ -1,8 +1,9 @@
 "use client";
 
 import type { AuditEventView } from "@/lib/types";
-import { deriveAlerts } from "@/lib/alerts";
-import { useMemo } from "react";
+import { deriveAlerts, type DerivedAlert } from "@/lib/alerts";
+import { useMemo, useState } from "react";
+import AlertDetailDrawer from "./AlertDetailDrawer";
 
 type AlertFeedProps = {
   events: AuditEventView[];
@@ -24,6 +25,9 @@ function badgeStyles(value: string) {
 
 export default function AlertFeed({ events }: AlertFeedProps) {
   const alerts = useMemo(() => deriveAlerts(events), [events]);
+  const [updatingAlerts, setUpdatingAlerts] = useState<Set<string>>(new Set());
+  const [selectedAlert, setSelectedAlert] = useState<DerivedAlert | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   function jumpToActor(actor: string) {
     const params = new URLSearchParams(window.location.search);
@@ -32,7 +36,57 @@ export default function AlertFeed({ events }: AlertFeedProps) {
     window.location.href = `${window.location.pathname}?${params.toString()}`;
   }
 
+  function openAlertDetail(alert: DerivedAlert) {
+    setSelectedAlert(alert);
+    setDrawerOpen(true);
+  }
+
+  function closeAlertDetail() {
+    setSelectedAlert(null);
+    setDrawerOpen(false);
+  }
+
+  async function updateAlertStatus(alertId: string, status: string, owner?: string) {
+    setUpdatingAlerts(prev => new Set(prev).add(alertId));
+
+    try {
+      const alert = alerts.find(a => a.id === alertId);
+      if (!alert) return;
+
+      const response = await fetch("/api/alert-cases", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          alertKey: alertId,
+          title: alert.title,
+          actor: alert.actor,
+          detectionType: alert.detectionType,
+          status,
+          owner,
+        }),
+      });
+
+      if (response.ok) {
+        // Refresh the page to show updated status
+        window.location.reload();
+      } else {
+        console.error("Failed to update alert status");
+      }
+    } catch (error) {
+      console.error("Error updating alert:", error);
+    } finally {
+      setUpdatingAlerts(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(alertId);
+        return newSet;
+      });
+    }
+  }
+
   return (
+    <>
     <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm">
       <div className="mb-4">
         <div className="flex items-center justify-between gap-4">
@@ -58,11 +112,10 @@ export default function AlertFeed({ events }: AlertFeedProps) {
       ) : (
         <div className="grid gap-4 xl:grid-cols-2">
           {alerts.map((alert) => (
-            <button
+            <div
               key={alert.id}
-              type="button"
-              onClick={() => jumpToActor(alert.actor)}
-              className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5 text-left transition hover:border-cyan-500/40 hover:bg-slate-950"
+              onClick={() => openAlertDetail(alert)}
+              className="cursor-pointer rounded-2xl border border-slate-800 bg-slate-950/60 p-5 text-left transition hover:border-cyan-500/40 hover:bg-slate-950"
             >
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -103,22 +156,87 @@ export default function AlertFeed({ events }: AlertFeedProps) {
               </p>
 
               <div className="mt-4 flex items-center justify-between">
-                <span
-                  className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${badgeStyles(
-                    alert.severity
-                  )}`}
-                >
-                  {alert.severity}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${badgeStyles(
+                      alert.severity
+                    )}`}
+                  >
+                    {alert.severity}
+                  </span>
+                  <span
+                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${badgeStyles(
+                      alert.status
+                    )}`}
+                  >
+                    {alert.status}
+                  </span>
+                </div>
 
-                <span className="text-xs font-medium uppercase tracking-wide text-cyan-300">
-                  Investigate actor →
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateAlertStatus(alert.id, "triaged");
+                    }}
+                    disabled={updatingAlerts.has(alert.id) || alert.status === "triaged" || alert.status === "resolved"}
+                    className="inline-flex items-center rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-300 transition hover:bg-violet-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Mark Triaged
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateAlertStatus(alert.id, "resolved");
+                    }}
+                    disabled={updatingAlerts.has(alert.id) || alert.status === "resolved"}
+                    className="inline-flex items-center rounded-lg border border-slate-500/30 bg-slate-500/10 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Resolve
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateAlertStatus(alert.id, "open", "Analyst");
+                    }}
+                    disabled={updatingAlerts.has(alert.id)}
+                    className="inline-flex items-center rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs font-medium text-cyan-300 transition hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Assign to Analyst
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between border-t border-slate-800 pt-3">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    jumpToActor(alert.actor);
+                  }}
+                  className="text-xs font-medium uppercase tracking-wide text-cyan-300 hover:text-cyan-200"
+                >
+                  Investigate Actor →
+                </button>
+                <span className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                  View Details →
                 </span>
               </div>
-            </button>
+            </div>
           ))}
         </div>
       )}
     </section>
+
+    <AlertDetailDrawer
+      alert={selectedAlert}
+      events={events}
+      open={drawerOpen}
+      onClose={closeAlertDetail}
+    />
+  </>
   );
 }

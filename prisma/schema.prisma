@@ -44,3 +44,33 @@ model AnalystNote {
 
   event AuditEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
 }
+
+model AlertCase {
+  id            String   @id @default(cuid())
+  alertKey      String   @unique
+  title         String
+  actor         String
+  detectionType String
+  status        String
+  owner         String?
+  disposition   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  alertKey  String
+  type      String   // alert_created, alert_escalated, alert_resolved
+  title     String
+  message   String
+  severity  String   // low, medium, high, critical
+  recipients String  // JSON array of email addresses
+  channels  String   // JSON array of channels: email, slack, webhook, sms
+  metadata  String?  // JSON metadata
+  sentAt    DateTime @default(now())
+  status    String   @default("sent") // sent, failed, pending
+
+  @@index([alertKey])
+  @@index([sentAt])
+}
