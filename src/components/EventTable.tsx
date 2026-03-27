@@ -58,14 +58,8 @@ function priorityBadge(priority: string) {
 }
 
 function rowPriorityStyle(priority: string) {
-  if (priority === "critical") {
-    return "bg-rose-500/5 hover:bg-rose-500/10";
-  }
-
-  if (priority === "high") {
-    return "bg-orange-500/5 hover:bg-orange-500/10";
-  }
-
+  if (priority === "critical") return "bg-rose-500/5 hover:bg-rose-500/10";
+  if (priority === "high") return "bg-orange-500/5 hover:bg-orange-500/10";
   return "hover:bg-slate-800/40";
 }
 
@@ -100,35 +94,11 @@ function getInvestigationSummary(
 
 export default function EventTable({ events }: { events: AuditEventView[] }) {
   const [selected, setSelected] = useState<AuditEventView | null>(null);
-  const [query, setQuery] = useState("");
-  const [severity, setSeverity] = useState("all");
-  const [flaggedOnly, setFlaggedOnly] = useState(false);
-
   const [notes, setNotes] = useState<AnalystNote[]>([]);
   const [newNote, setNewNote] = useState("");
   const [isLoadingNotes, setIsLoadingNotes] = useState(false);
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
-
-  const filteredEvents = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-
-    return events.filter((event) => {
-      const matchesQuery =
-        normalizedQuery.length === 0 ||
-        event.actor.toLowerCase().includes(normalizedQuery) ||
-        event.action.toLowerCase().includes(normalizedQuery) ||
-        event.resource.toLowerCase().includes(normalizedQuery) ||
-        event.ipAddress.toLowerCase().includes(normalizedQuery);
-
-      const matchesSeverity =
-        severity === "all" ? true : event.severity === severity;
-
-      const matchesFlagged = flaggedOnly ? event.flagged : true;
-
-      return matchesQuery && matchesSeverity && matchesFlagged;
-    });
-  }, [events, query, severity, flaggedOnly]);
 
   const selectedRelatedEvents = useMemo(() => {
     if (!selected) return [];
@@ -168,9 +138,7 @@ export default function EventTable({ events }: { events: AuditEventView[] }) {
 
         const data: AnalystNote[] = await res.json();
 
-        if (!cancelled) {
-          setNotes(data);
-        }
+        if (!cancelled) setNotes(data);
       } catch (error) {
         if (!cancelled) {
           setNotesError(
@@ -178,9 +146,7 @@ export default function EventTable({ events }: { events: AuditEventView[] }) {
           );
         }
       } finally {
-        if (!cancelled) {
-          setIsLoadingNotes(false);
-        }
+        if (!cancelled) setIsLoadingNotes(false);
       }
     }
 
@@ -214,7 +180,6 @@ export default function EventTable({ events }: { events: AuditEventView[] }) {
       }
 
       const created: AnalystNote = await res.json();
-
       setNotes((prev) => [created, ...prev]);
       setNewNote("");
     } catch (error) {
@@ -230,49 +195,10 @@ export default function EventTable({ events }: { events: AuditEventView[] }) {
 
   return (
     <div className="relative">
-      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex-1">
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by actor, action, resource, or IP..."
-            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none"
-          />
-        </div>
-
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <select
-            value={severity}
-            onChange={(e) => setSeverity(e.target.value)}
-            className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm text-slate-100 focus:border-cyan-400 focus:outline-none"
-          >
-            <option value="all">All Severities</option>
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-            <option value="critical">Critical</option>
-          </select>
-
-          <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm text-slate-200">
-            <input
-              type="checkbox"
-              checked={flaggedOnly}
-              onChange={(e) => setFlaggedOnly(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-600 bg-slate-900"
-            />
-            Flagged only
-          </label>
-        </div>
-      </div>
-
       <div className="mb-3 text-sm text-slate-400">
-        Showing{" "}
-        <span className="font-medium text-slate-200">
-          {filteredEvents.length}
-        </span>{" "}
-        of <span className="font-medium text-slate-200">{events.length}</span>{" "}
-        events
+        Returned{" "}
+        <span className="font-medium text-slate-200">{events.length}</span>{" "}
+        events from the server
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-800">
@@ -292,7 +218,7 @@ export default function EventTable({ events }: { events: AuditEventView[] }) {
           </thead>
 
           <tbody className="divide-y divide-slate-800">
-            {filteredEvents.map((event) => {
+            {events.map((event) => {
               const detections = getDetectionLabels(event);
               const priority = getInvestigationPriority(event);
 
@@ -366,13 +292,13 @@ export default function EventTable({ events }: { events: AuditEventView[] }) {
               );
             })}
 
-            {filteredEvents.length === 0 && (
+            {events.length === 0 && (
               <tr>
                 <td
                   colSpan={9}
                   className="px-5 py-10 text-center text-sm text-slate-500"
                 >
-                  No events match your current filters.
+                  No events matched the current server-side filters.
                 </td>
               </tr>
             )}
@@ -422,13 +348,6 @@ export default function EventTable({ events }: { events: AuditEventView[] }) {
                 </div>
 
                 <div>
-                  <p className="text-slate-500">Actor Type</p>
-                  <p className="capitalize">
-                    {selectedEvent.actorType.replaceAll("_", " ")}
-                  </p>
-                </div>
-
-                <div>
                   <p className="text-slate-500">Action</p>
                   <p>{selectedEvent.action}</p>
                 </div>
@@ -436,9 +355,6 @@ export default function EventTable({ events }: { events: AuditEventView[] }) {
                 <div>
                   <p className="text-slate-500">Resource</p>
                   <p>{selectedEvent.resource}</p>
-                  <p className="text-xs text-slate-500">
-                    {selectedEvent.resourceType}
-                  </p>
                 </div>
 
                 <div>
@@ -447,32 +363,18 @@ export default function EventTable({ events }: { events: AuditEventView[] }) {
                 </div>
 
                 <div>
-                  <p className="text-slate-500">Location</p>
-                  <p>{selectedEvent.location ?? "Unknown"}</p>
-                </div>
-
-                <div>
-                  <p className="text-slate-500">User Agent</p>
-                  <p>{selectedEvent.userAgent ?? "Unknown"}</p>
-                </div>
-
-                <div>
                   <p className="mb-2 text-slate-500">Detections</p>
                   <div className="flex flex-wrap gap-2">
-                    {getDetectionLabels(selectedEvent).length > 0 ? (
-                      getDetectionLabels(selectedEvent).map((label) => (
-                        <span
-                          key={label}
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${anomalyBadge(
-                            label
-                          )}`}
-                        >
-                          {label}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-xs text-slate-500">None</span>
-                    )}
+                    {getDetectionLabels(selectedEvent).map((label) => (
+                      <span
+                        key={label}
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${anomalyBadge(
+                          label
+                        )}`}
+                      >
+                        {label}
+                      </span>
+                    ))}
                   </div>
                 </div>
 
@@ -492,59 +394,6 @@ export default function EventTable({ events }: { events: AuditEventView[] }) {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-slate-500">Severity</p>
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${severityBadge(
-                        selectedEvent.severity
-                      )}`}
-                    >
-                      {selectedEvent.severity}
-                    </span>
-                  </div>
-
-                  <div>
-                    <p className="text-slate-500">Risk Score</p>
-                    <p>{selectedEvent.riskScore}</p>
-                  </div>
-
-                  <div>
-                    <p className="text-slate-500">Status</p>
-                    <p className="capitalize">{selectedEvent.status}</p>
-                  </div>
-
-                  <div>
-                    <p className="text-slate-500">Outcome</p>
-                    <p className="capitalize">{selectedEvent.outcome}</p>
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-slate-500">Flagged</p>
-                  <p>{selectedEvent.flagged ? "Yes" : "No"}</p>
-                </div>
-
-                {selectedEvent.reason && (
-                  <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4">
-                    <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-rose-300">
-                      Flag Reason
-                    </p>
-                    <p className="text-sm text-rose-100">
-                      {selectedEvent.reason}
-                    </p>
-                  </div>
-                )}
-
-                {selectedEvent.metadata && (
-                  <div>
-                    <p className="mb-2 text-slate-500">Metadata</p>
-                    <pre className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 p-4 text-xs text-slate-300">
-                      {selectedEvent.metadata}
-                    </pre>
-                  </div>
-                )}
-
                 <div className="border-t border-slate-800 pt-6">
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="text-lg font-semibold text-slate-100">
@@ -556,15 +405,7 @@ export default function EventTable({ events }: { events: AuditEventView[] }) {
                   </div>
 
                   <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-                    <label
-                      htmlFor="analyst-note"
-                      className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500"
-                    >
-                      Add note
-                    </label>
-
                     <textarea
-                      id="analyst-note"
                       value={newNote}
                       onChange={(e) => setNewNote(e.target.value)}
                       rows={4}

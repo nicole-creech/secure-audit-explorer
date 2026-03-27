@@ -1,24 +1,69 @@
 import { prisma } from "@/lib/prisma";
 import EventTable from "@/components/EventTable";
 import AnalyticsPanel from "@/components/AnalyticsPanel";
+import EventFilters from "@/components/EventFilters";
 import type { AuditEventView } from "@/lib/types";
+import type { Prisma } from "@prisma/client";
 
-export default async function HomePage() {
-  const events = await prisma.auditEvent.findMany({
-    orderBy: { timestamp: "desc" },
-    take: 20,
-  });
+type HomePageProps = {
+  searchParams: Promise<{
+    q?: string;
+    severity?: string;
+    flagged?: string;
+  }>;
+};
 
-  const totalEvents = await prisma.auditEvent.count();
-  const flaggedEvents = await prisma.auditEvent.count({
-    where: { flagged: true },
-  });
-  const openEvents = await prisma.auditEvent.count({
-    where: { status: { in: ["open", "investigating"] } },
-  });
-  const criticalEvents = await prisma.auditEvent.count({
-    where: { severity: "critical" },
-  });
+export default async function HomePage({ searchParams }: HomePageProps) {
+  const params = await searchParams;
+
+  const query = params.q?.trim() ?? "";
+  const severity = params.severity ?? "all";
+  const flaggedOnly = params.flagged === "true";
+
+  const where: Prisma.AuditEventWhereInput = {
+    AND: [
+      query
+        ? {
+            OR: [
+              { actor: { contains: query } },
+              { action: { contains: query } },
+              { resource: { contains: query } },
+              { ipAddress: { contains: query } },
+            ],
+          }
+        : {},
+      severity !== "all" ? { severity } : {},
+      flaggedOnly ? { flagged: true } : {},
+    ],
+  };
+
+  const [events, totalEvents, flaggedEvents, openEvents, criticalEvents] =
+    await Promise.all([
+      prisma.auditEvent.findMany({
+        where,
+        orderBy: { timestamp: "desc" },
+        take: 50,
+      }),
+      prisma.auditEvent.count({ where }),
+      prisma.auditEvent.count({
+        where: {
+          ...where,
+          flagged: true,
+        },
+      }),
+      prisma.auditEvent.count({
+        where: {
+          ...where,
+          status: { in: ["open", "investigating"] },
+        },
+      }),
+      prisma.auditEvent.count({
+        where: {
+          ...where,
+          severity: "critical",
+        },
+      }),
+    ]);
 
   const serializedEvents: AuditEventView[] = events.map((event) => ({
     ...event,
@@ -42,13 +87,19 @@ export default async function HomePage() {
           </p>
         </div>
 
+        <EventFilters
+          initialQuery={query}
+          initialSeverity={severity}
+          initialFlaggedOnly={flaggedOnly}
+        />
+
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm">
-            <p className="text-sm text-slate-400">Total Events</p>
+            <p className="text-sm text-slate-400">Matching Events</p>
             <p className="mt-2 text-3xl font-semibold">{totalEvents}</p>
           </div>
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm">
-            <p className="text-sm text-slate-400">Flagged Events</p>
+            <p className="text-sm text-slate-400">Flagged Matches</p>
             <p className="mt-2 text-3xl font-semibold">{flaggedEvents}</p>
           </div>
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm">
@@ -56,7 +107,7 @@ export default async function HomePage() {
             <p className="mt-2 text-3xl font-semibold">{openEvents}</p>
           </div>
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-sm">
-            <p className="text-sm text-slate-400">Critical Events</p>
+            <p className="text-sm text-slate-400">Critical Matches</p>
             <p className="mt-2 text-3xl font-semibold">{criticalEvents}</p>
           </div>
         </div>
@@ -67,7 +118,7 @@ export default async function HomePage() {
           <div className="border-b border-slate-800 px-5 py-4">
             <h2 className="text-lg font-semibold">Recent Events</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Latest normalized audit activity across monitored systems.
+              Filtered audit activity returned directly from the server.
             </p>
           </div>
 
