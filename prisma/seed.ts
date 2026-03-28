@@ -1,19 +1,26 @@
 import "dotenv/config";
 
 import { PrismaClient } from "@prisma/client";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
 import bcrypt from "bcryptjs";
 
-const adapter = new PrismaBetterSqlite3({
-  url: process.env.DATABASE_URL!,
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error("DATABASE_URL is not set");
+}
+
+const pool = new Pool({
+  connectionString,
 });
 
+const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
   await prisma.user.deleteMany();
 
-  // Hash demo user passwords
   const users = [
     {
       name: "Alice Admin",
@@ -34,13 +41,13 @@ async function main() {
       role: "viewer",
     },
   ];
+
   await prisma.user.createMany({ data: users });
   await prisma.analystNote.deleteMany();
   await prisma.alertCase.deleteMany();
   await prisma.detectionRule.deleteMany();
   await prisma.auditEvent.deleteMany();
 
-  // Detection rules
   await prisma.detectionRule.createMany({
     data: [
       {
@@ -70,7 +77,6 @@ async function main() {
     ],
   });
 
-  // Alert cases
   await prisma.alertCase.createMany({
     data: [
       {
@@ -254,4 +260,5 @@ main()
   })
   .finally(async () => {
     await prisma.$disconnect();
+    await pool.end();
   });
