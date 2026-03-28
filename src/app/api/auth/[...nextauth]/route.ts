@@ -1,4 +1,4 @@
-import NextAuth from "next-auth";
+import NextAuth, { type NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
@@ -28,7 +28,7 @@ const demoUsers = [
   },
 ];
 
-export const authOptions = {
+export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   providers: [
     CredentialsProvider({
@@ -50,7 +50,6 @@ export const authOptions = {
 
         const normalizedEmail = credentials.email.toLowerCase().trim();
 
-        // 1) Demo fallback so login works right now
         const demoUser = demoUsers.find(
           (user) => user.email.toLowerCase() === normalizedEmail
         );
@@ -71,7 +70,6 @@ export const authOptions = {
           };
         }
 
-        // 2) Database auth path
         const user = await prisma.user.findUnique({
           where: { email: normalizedEmail },
         });
@@ -114,13 +112,13 @@ export const authOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.role = user.role;
+        token.role = (user as { role?: string }).role;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user && token?.role) {
-        session.user.role = token.role;
+        session.user.role = token.role as string;
       }
       return session;
     },

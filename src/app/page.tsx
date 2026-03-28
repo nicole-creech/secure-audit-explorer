@@ -28,6 +28,8 @@ const ALLOWED_SORT_FIELDS = new Set([
   "status",
 ]);
 
+type SortField = "timestamp" | "severity" | "riskScore" | "actor" | "status";
+
 export default async function HomePage({ searchParams }: HomePageProps) {
   const params = await searchParams;
 
@@ -38,26 +40,36 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const pageSize = [10, 25, 50].includes(Number(params.pageSize))
     ? Number(params.pageSize)
     : 25;
-  const sortBy = ALLOWED_SORT_FIELDS.has(params.sortBy ?? "")
-    ? (params.sortBy as "timestamp" | "severity" | "riskScore" | "actor" | "status")
+
+  const sortBy: SortField = ALLOWED_SORT_FIELDS.has(params.sortBy ?? "")
+    ? (params.sortBy as SortField)
     : "timestamp";
-  const sortDir = params.sortDir === "asc" ? "asc" : "desc";
+
+  const sortDir: Prisma.SortOrder = params.sortDir === "asc" ? "asc" : "desc";
+
+  const baseConditions: Prisma.AuditEventWhereInput[] = [];
+
+  if (query) {
+    baseConditions.push({
+      OR: [
+        { actor: { contains: query } },
+        { action: { contains: query } },
+        { resource: { contains: query } },
+        { ipAddress: { contains: query } },
+      ],
+    });
+  }
+
+  if (severity !== "all") {
+    baseConditions.push({ severity });
+  }
+
+  if (flaggedOnly) {
+    baseConditions.push({ flagged: true });
+  }
 
   const where: Prisma.AuditEventWhereInput = {
-    AND: [
-      query
-        ? {
-            OR: [
-              { actor: { contains: query } },
-              { action: { contains: query } },
-              { resource: { contains: query } },
-              { ipAddress: { contains: query } },
-            ],
-          }
-        : {},
-      severity !== "all" ? { severity } : {},
-      flaggedOnly ? { flagged: true } : {},
-    ].filter(condition => Object.keys(condition).length > 0),
+    AND: baseConditions,
   };
 
   const totalMatchingEvents = await prisma.auditEvent.count({ where });
@@ -76,26 +88,17 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     }),
     prisma.auditEvent.count({
       where: {
-        AND: [
-          ...(where.AND as any[]),
-          { flagged: true }
-        ],
+        AND: [...baseConditions, { flagged: true }],
       },
     }),
     prisma.auditEvent.count({
       where: {
-        AND: [
-          ...(where.AND as any[]),
-          { status: { in: ["open", "investigating"] } }
-        ],
+        AND: [...baseConditions, { status: { in: ["open", "investigating"] } }],
       },
     }),
     prisma.auditEvent.count({
       where: {
-        AND: [
-          ...(where.AND as any[]),
-          { severity: "critical" }
-        ],
+        AND: [...baseConditions, { severity: "critical" }],
       },
     }),
   ]);
@@ -109,7 +112,6 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
       <div className="mx-auto flex max-w-7xl flex-col gap-8 px-6 py-10">
-        {/* Navigation Header */}
         <nav className="flex items-center justify-between">
           <div className="space-y-3">
             <p className="text-sm font-medium uppercase tracking-[0.2em] text-cyan-300">
@@ -126,13 +128,13 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           <div className="flex gap-4">
             <a
               href="/rules"
-              className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 transition-colors"
+              className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-700"
             >
               Detection Rules
             </a>
             <a
               href="/alert-cases"
-              className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-600 transition-colors"
+              className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-slate-200 transition-colors hover:bg-slate-600"
             >
               Alert Cases
             </a>
@@ -177,22 +179,17 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           <div className="border-b border-slate-800 px-5 py-4">
             <h2 className="text-lg font-semibold">Recent Events</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Filtered, sorted, and paginated audit activity returned directly from the server.
+              Filtered, sorted, and paginated audit activity returned directly
+              from the server.
             </p>
           </div>
 
           <div className="space-y-5 p-5">
-            <PaginationControls
-              currentPage={safePage}
-              totalPages={totalPages}
-            />
+            <PaginationControls currentPage={safePage} totalPages={totalPages} />
 
             <EventTable events={serializedEvents} />
 
-            <PaginationControls
-              currentPage={safePage}
-              totalPages={totalPages}
-            />
+            <PaginationControls currentPage={safePage} totalPages={totalPages} />
           </div>
         </section>
       </div>

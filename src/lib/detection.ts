@@ -1,5 +1,3 @@
-import type { AuditEvent } from "@prisma/client";
-
 export type DetectionLabel =
   | "Impossible travel"
   | "Privilege escalation"
@@ -10,7 +8,18 @@ export type DetectionLabel =
 
 export type InvestigationPriority = "low" | "medium" | "high" | "critical";
 
-export function getDetectionLabels(event: AuditEvent): DetectionLabel[] {
+type DetectionEvent = {
+  action: string;
+  reason: string | null;
+  actorType: string;
+  location: string | null;
+  flagged: boolean;
+  severity: string;
+  status: string;
+  riskScore: number;
+};
+
+export function getDetectionLabels(event: DetectionEvent): DetectionLabel[] {
   const labels: DetectionLabel[] = [];
 
   const action = event.action.toLowerCase();
@@ -51,7 +60,7 @@ export function getDetectionLabels(event: AuditEvent): DetectionLabel[] {
   return labels;
 }
 
-export function getPriorityScore(event: AuditEvent): number {
+export function getPriorityScore(event: DetectionEvent): number {
   const detections = getDetectionLabels(event);
 
   let score = event.riskScore;
@@ -89,7 +98,7 @@ export function getPriorityScore(event: AuditEvent): number {
 }
 
 export function getInvestigationPriority(
-  event: AuditEvent
+  event: DetectionEvent
 ): InvestigationPriority {
   const score = getPriorityScore(event);
 

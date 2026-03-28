@@ -16,6 +16,10 @@ type AnalystNote = {
   createdAt: string;
 };
 
+type EventTableProps = {
+  events: AuditEventView[];
+};
+
 function severityBadge(severity: string) {
   const styles: Record<string, string> = {
     low: "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30",
@@ -74,25 +78,25 @@ function getInvestigationSummary(
   ).length;
 
   if (detections.includes("Impossible travel")) {
-    return `This actor has activity associated with impossible travel indicators. Review authentication origin, session history, and recent access changes for possible account compromise.`;
+    return "This actor has activity associated with impossible travel indicators. Review authentication origin, session history, and recent access changes for possible account compromise.";
   }
 
   if (detections.includes("Privilege escalation")) {
-    return `This actor performed a privilege-related action. Validate whether the access change was approved and whether any sensitive systems were touched afterward.`;
+    return "This actor performed a privilege-related action. Validate whether the access change was approved and whether any sensitive systems were touched afterward.";
   }
 
   if (detections.includes("Repeated auth failures")) {
-    return `This actor shows failed authentication behavior that may indicate password spraying, brute force attempts, or stolen credential testing.`;
+    return "This actor shows failed authentication behavior that may indicate password spraying, brute force attempts, or stolen credential testing.";
   }
 
   if (flaggedCount >= 2 || criticalCount >= 1) {
-    return `This actor has multiple elevated events in the current timeline. The pattern suggests the account should be reviewed as part of an active investigation.`;
+    return "This actor has multiple elevated events in the current timeline. The pattern suggests the account should be reviewed as part of an active investigation.";
   }
 
   return `This actor has ${relatedEvents.length} related events in the current dataset. Review the event sequence to understand whether the selected activity is isolated or part of a broader pattern.`;
 }
 
-export default function EventTable({ events }: { events: AuditEventView[] }) {
+export default function EventTable({ events }: EventTableProps) {
   const [selected, setSelected] = useState<AuditEventView | null>(null);
   const [notes, setNotes] = useState<AnalystNote[]>([]);
   const [newNote, setNewNote] = useState("");
@@ -100,10 +104,11 @@ export default function EventTable({ events }: { events: AuditEventView[] }) {
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
 
-  const selectedRelatedEvents = useMemo(() => {
-    if (!selected) return [];
+  const selectedId = selected?.id ?? null;
+  const selectedActor = selected?.actor ?? null;
 
-    const selectedActor = selected.actor;
+  const selectedRelatedEvents = useMemo(() => {
+    if (!selectedActor) return [];
 
     return [...events]
       .filter((event) => event.actor === selectedActor)
@@ -111,13 +116,14 @@ export default function EventTable({ events }: { events: AuditEventView[] }) {
         (a, b) =>
           new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
       );
-  }, [events, selected]);
+  }, [events, selectedActor]);
 
   useEffect(() => {
-    if (!selected?.id) {
+    if (!selectedId) {
       setNotes([]);
       setNewNote("");
       setNotesError(null);
+      setIsLoadingNotes(false);
       return;
     }
 
@@ -128,7 +134,7 @@ export default function EventTable({ events }: { events: AuditEventView[] }) {
         setIsLoadingNotes(true);
         setNotesError(null);
 
-        const res = await fetch(`/api/events/${selected.id}/notes`, {
+        const res = await fetch(`/api/events/${selectedId}/notes`, {
           cache: "no-store",
         });
 
@@ -138,7 +144,9 @@ export default function EventTable({ events }: { events: AuditEventView[] }) {
 
         const data: AnalystNote[] = await res.json();
 
-        if (!cancelled) setNotes(data);
+        if (!cancelled) {
+          setNotes(data);
+        }
       } catch (error) {
         if (!cancelled) {
           setNotesError(
@@ -146,37 +154,43 @@ export default function EventTable({ events }: { events: AuditEventView[] }) {
           );
         }
       } finally {
-        if (!cancelled) setIsLoadingNotes(false);
+        if (!cancelled) {
+          setIsLoadingNotes(false);
+        }
       }
     }
 
-    loadNotes();
+    void loadNotes();
 
     return () => {
       cancelled = true;
     };
-  }, [selected?.id]);
+  }, [selectedId]);
 
   async function handleAddNote() {
-    if (!selected?.id || !newNote.trim()) return;
+    if (!selectedId || !newNote.trim()) return;
 
     try {
       setIsSavingNote(true);
       setNotesError(null);
 
-      const res = await fetch(`/api/events/${selected.id}/notes`, {
+      const res = await fetch(`/api/events/${selectedId}/notes`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          content: newNote,
+          content: newNote.trim(),
         }),
       });
 
       if (!res.ok) {
         const errorBody = await res.json().catch(() => null);
-        throw new Error(errorBody?.error || "Failed to save note.");
+        throw new Error(
+          errorBody?.error && typeof errorBody.error === "string"
+            ? errorBody.error
+            : "Failed to save note."
+        );
       }
 
       const created: AnalystNote = await res.json();
@@ -190,8 +204,6 @@ export default function EventTable({ events }: { events: AuditEventView[] }) {
       setIsSavingNote(false);
     }
   }
-
-  const selectedEvent = selected;
 
   return (
     <div className="relative">
@@ -306,7 +318,7 @@ export default function EventTable({ events }: { events: AuditEventView[] }) {
         </table>
       </div>
 
-      {selectedEvent && (
+      {selected && (
         <>
           <div
             className="fixed inset-0 z-40 bg-black/40"
@@ -331,7 +343,7 @@ export default function EventTable({ events }: { events: AuditEventView[] }) {
                 Investigation Summary
               </p>
               <p className="text-sm text-cyan-50">
-                {getInvestigationSummary(selectedEvent, selectedRelatedEvents)}
+                {getInvestigationSummary(selected, selectedRelatedEvents)}
               </p>
             </div>
 
@@ -339,33 +351,33 @@ export default function EventTable({ events }: { events: AuditEventView[] }) {
               <div className="space-y-4 text-sm text-slate-300">
                 <div>
                   <p className="text-slate-500">Timestamp</p>
-                  <p>{new Date(selectedEvent.timestamp).toLocaleString()}</p>
+                  <p>{new Date(selected.timestamp).toLocaleString()}</p>
                 </div>
 
                 <div>
                   <p className="text-slate-500">Actor</p>
-                  <p>{selectedEvent.actor}</p>
+                  <p>{selected.actor}</p>
                 </div>
 
                 <div>
                   <p className="text-slate-500">Action</p>
-                  <p>{selectedEvent.action}</p>
+                  <p>{selected.action}</p>
                 </div>
 
                 <div>
                   <p className="text-slate-500">Resource</p>
-                  <p>{selectedEvent.resource}</p>
+                  <p>{selected.resource}</p>
                 </div>
 
                 <div>
                   <p className="text-slate-500">IP Address</p>
-                  <p>{selectedEvent.ipAddress}</p>
+                  <p>{selected.ipAddress}</p>
                 </div>
 
                 <div>
                   <p className="mb-2 text-slate-500">Detections</p>
                   <div className="flex flex-wrap gap-2">
-                    {getDetectionLabels(selectedEvent).map((label) => (
+                    {getDetectionLabels(selected).map((label) => (
                       <span
                         key={label}
                         className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${anomalyBadge(
@@ -383,13 +395,13 @@ export default function EventTable({ events }: { events: AuditEventView[] }) {
                   <div className="flex items-center gap-3">
                     <span
                       className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${priorityBadge(
-                        getInvestigationPriority(selectedEvent)
+                        getInvestigationPriority(selected)
                       )}`}
                     >
-                      {getInvestigationPriority(selectedEvent)}
+                      {getInvestigationPriority(selected)}
                     </span>
                     <span className="text-xs text-slate-400">
-                      Score: {getPriorityScore(selectedEvent)}/100
+                      Score: {getPriorityScore(selected)}/100
                     </span>
                   </div>
                 </div>
@@ -477,7 +489,7 @@ export default function EventTable({ events }: { events: AuditEventView[] }) {
                   <p className="text-sm text-slate-400">
                     Related activity for{" "}
                     <span className="font-medium text-slate-200">
-                      {selectedEvent.actor}
+                      {selected.actor}
                     </span>
                   </p>
                 </div>
@@ -485,7 +497,7 @@ export default function EventTable({ events }: { events: AuditEventView[] }) {
                 <div className="space-y-4">
                   {selectedRelatedEvents.map((relatedEvent, index) => {
                     const detections = getDetectionLabels(relatedEvent);
-                    const isSelected = relatedEvent.id === selectedEvent.id;
+                    const isSelected = relatedEvent.id === selected.id;
                     const priority = getInvestigationPriority(relatedEvent);
 
                     return (

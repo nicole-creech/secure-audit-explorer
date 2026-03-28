@@ -16,6 +16,7 @@ export type AuditEventView = {
   flagged: boolean;
   reason: string | null;
   metadata: string | null;
+  tags: string | null;
   createdAt: string;
 };
 
