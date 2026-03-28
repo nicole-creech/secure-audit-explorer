@@ -1,6 +1,8 @@
 import "dotenv/config";
+
 import { PrismaClient } from "@prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import bcrypt from "bcryptjs";
 
 const adapter = new PrismaBetterSqlite3({
   url: process.env.DATABASE_URL!,
@@ -9,6 +11,30 @@ const adapter = new PrismaBetterSqlite3({
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
+  await prisma.user.deleteMany();
+
+  // Hash demo user passwords
+  const users = [
+    {
+      name: "Alice Admin",
+      email: "alice@demo.com",
+      password: await bcrypt.hash("adminpass", 10),
+      role: "admin",
+    },
+    {
+      name: "Bob Analyst",
+      email: "bob@demo.com",
+      password: await bcrypt.hash("analystpass", 10),
+      role: "analyst",
+    },
+    {
+      name: "Vera Viewer",
+      email: "vera@demo.com",
+      password: await bcrypt.hash("viewerpass", 10),
+      role: "viewer",
+    },
+  ];
+  await prisma.user.createMany({ data: users });
   await prisma.analystNote.deleteMany();
   await prisma.alertCase.deleteMany();
   await prisma.detectionRule.deleteMany();

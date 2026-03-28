@@ -1,4 +1,28 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+
+# Secure Audit Explorer
+
+This project is a full-stack investigation workspace for analyzing authentication, access, and privilege events across enterprise systems. It features:
+- Investigation workflow with notes, tagging, and related event linking
+- Detection rules and alert cases
+- Role-Based Access Control (RBAC) with user roles (admin, analyst, viewer)
+- Production-style authentication with hashed passwords
+
+## Authentication & Password Hashing
+
+- User passwords are securely hashed using `bcryptjs` before being stored in the database.
+- Demo users are seeded with hashed passwords (see `prisma/seed.ts`).
+- For authentication, use a credentials-based provider (e.g., NextAuth.js) and compare login attempts using bcrypt.
+- **Never store plaintext passwords in production.**
+
+## Demo Users
+
+| Name         | Email             | Password     | Role    |
+|--------------|-------------------|-------------|---------|
+| Alice Admin  | alice@demo.com    | adminpass    | admin   |
+| Bob Analyst  | bob@demo.com      | analystpass  | analyst |
+| Vera Viewer  | vera@demo.com     | viewerpass   | viewer  |
+
+## Getting Started
 
 ## Getting Started
 
