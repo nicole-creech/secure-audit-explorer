@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { authorize } from "@/lib/authz";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await authorize("read");
+  if (auth.error) return auth.error;
+
   const { id } = await params;
   try {
     const rule = await prisma.detectionRule.findUnique({
@@ -29,6 +33,9 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await authorize("manageRules");
+  if (auth.error) return auth.error;
+
   const { id } = await params;
   try {
     const body = await request.json();
@@ -63,6 +70,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await authorize("manageRules");
+  if (auth.error) return auth.error;
+
   const { id } = await params;
   try {
     await prisma.detectionRule.delete({

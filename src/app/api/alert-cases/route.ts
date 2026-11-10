@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { authorize } from "@/lib/authz";
 import { createNotificationRecord } from "@/lib/notifications";
 import type { AlertRequestBody } from "@/lib/types";
 
@@ -14,6 +15,9 @@ type AlertCaseData = {
 };
 
 export async function GET() {
+  const auth = await authorize("read");
+  if (auth.error) return auth.error;
+
   try {
     const alertCases = await prisma.alertCase.findMany({
       orderBy: { createdAt: "desc" },
@@ -29,6 +33,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const auth = await authorize("investigate");
+  if (auth.error) return auth.error;
+
   try {
     const body: AlertRequestBody = await req.json();
 

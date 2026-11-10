@@ -27,6 +27,15 @@ The project focuses on secure access, auditability, investigation workflows, and
 - Session handling includes both inactivity logout and max session lifetime
 - Plaintext passwords should never be used outside local demo/testing scenarios
 
+## Security
+
+- Every API route checks the session and role on the server (`src/lib/authz.ts`): any signed-in role can read; admin, analyst and responder can investigate; admin and analyst can manage detection rules; viewers are read-only
+- `src/proxy.ts` redirects signed-out visitors to `/login` before any protected page renders, and sets a strict nonce-based Content-Security-Policy
+- Security headers (HSTS, `nosniff`, frame denial, referrer and permissions policies) and `no-store` on API responses
+- Sessions expire after 8 hours, plus a 15-minute inactivity logout
+- Analyst notes are attributed to the signed-in user
+- CI runs `npm audit`, the build, and smoke tests for access control and headers; Dependabot keeps dependencies current
+
 ## Demo Users
 
 | Name         | Email             | Password     | Role    |
