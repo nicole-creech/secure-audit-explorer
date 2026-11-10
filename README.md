@@ -41,7 +41,7 @@ The project focuses on secure access, auditability, investigation workflows, and
 - TypeScript
 - Tailwind CSS
 - Prisma
-- SQLite
+- PostgreSQL (Neon)
 - NextAuth.js / Auth.js
 - bcryptjs
 - Recharts
