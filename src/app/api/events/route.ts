@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { authorize } from "@/lib/authz";
 import { processEventWithRules } from "@/lib/rules";
 
 export async function POST(request: NextRequest) {
+  const auth = await authorize("investigate");
+  if (auth.error) return auth.error;
+
   try {
     const body = await request.json();
     const {

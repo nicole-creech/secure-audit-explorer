@@ -1,4 +1,7 @@
 import { prisma } from "@/lib/prisma";
+import { redirect } from "next/navigation";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import EventTable from "@/components/EventTable";
 import AnalyticsPanel from "@/components/AnalyticsPanel";
 import EventFilters from "@/components/EventFilters";
@@ -31,6 +34,11 @@ const ALLOWED_SORT_FIELDS = new Set([
 type SortField = "timestamp" | "severity" | "riskScore" | "actor" | "status";
 
 export default async function HomePage({ searchParams }: HomePageProps) {
+  // Defense in depth: this page reads audit data on the server, so it checks the
+  // session itself instead of relying only on src/proxy.ts.
+  const session = await getServerSession(authOptions);
+  if (!session) redirect("/login");
+
   const params = await searchParams;
 
   const query = params.q?.trim() ?? "";

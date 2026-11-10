@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { authorize } from "@/lib/authz";
 
 export async function GET() {
+  const auth = await authorize("read");
+  if (auth.error) return auth.error;
+
   try {
     const rules = await prisma.detectionRule.findMany({
       orderBy: { createdAt: "desc" },
@@ -17,6 +21,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await authorize("manageRules");
+  if (auth.error) return auth.error;
+
   try {
     const body = await request.json();
     const { name, description, field, operator, value, timeWindow, severity } = body;

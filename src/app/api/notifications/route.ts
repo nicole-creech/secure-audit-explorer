@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
+import { authorize } from "@/lib/authz";
 import { getRecentNotifications } from "@/lib/notifications";
 
 export async function GET() {
+  const auth = await authorize("read");
+  if (auth.error) return auth.error;
+
   try {
     const notifications = await getRecentNotifications(50);
     return NextResponse.json(notifications);

@@ -1,0 +1,79 @@
+name: security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "23 13 * * 1"
+
+permissions:
+  contents: read
+
+env:
+  # Placeholders so the app builds and starts in CI. The smoke tests below only
+  # exercise auth and headers, which never reach the database.
+  DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+  DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+  NEXTAUTH_SECRET: ci-only-secret-not-used-in-production
+  NEXTAUTH_URL: http://localhost:3000
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  audit-build-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm audit --audit-level=moderate
+      - name: Lint (advisory until existing UI lint errors are fixed)
+        run: npm run lint
+        continue-on-error: true
+      - run: npm run build
+      - name: Start production server
+        run: |
+          npm start -- -p 3000 > server.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf -o /dev/null http://localhost:3000/login && break; sleep 1; done
+      - name: Smoke-test access control and headers
+        run: |
+          set -e
+          fail() { echo "FAIL: $1"; cat server.log; exit 1; }
+
+          # Signed-out page requests are redirected to /login
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/)
+          loc=$(curl -s -o /dev/null -w '%{redirect_url}' http://localhost:3000/)
+          [ "$code" = "307" ] && [[ "$loc" == */login ]] || fail "/ returned $code -> $loc"
+          for p in /alert-cases /rules /rules/new; do
+            c=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:3000$p")
+            [ "$c" = "307" ] || fail "$p returned $c"
+          done
+
+          # Signed-out API requests are rejected
+          for p in /api/rules /api/alert-cases /api/notifications /api/events/x/notes; do
+            c=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:3000$p")
+            [ "$c" = "401" ] || fail "GET $p returned $c"
+          done
+          c=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"actor":"a","action":"b","resource":"c"}' http://localhost:3000/api/events)
+          [ "$c" = "401" ] || fail "POST /api/events returned $c"
+          c=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE http://localhost:3000/api/rules/x)
+          [ "$c" = "401" ] || fail "DELETE /api/rules/x returned $c"
+
+          # Login page carries the security headers and a nonce on every script
+          curl -s -D headers.txt -o login.html http://localhost:3000/login
+          grep -qi '^content-security-policy:.*nonce-' headers.txt || fail "missing CSP"
+          for h in strict-transport-security x-content-type-options x-frame-options referrer-policy permissions-policy; do
+            grep -qi "^$h:" headers.txt || fail "missing $h"
+          done
+          ! grep -qi '^x-powered-by:' headers.txt || fail "x-powered-by present"
+          nonce=$(grep -i '^content-security-policy:' headers.txt | sed -E "s/.*'nonce-([^']+)'.*/\1/")
+          total=$(grep -o '<script[^>]*>' login.html | wc -l)
+          with=$(grep -o '<script[^>]*>' login.html | grep -c "nonce=\"$nonce\"" || true)
+          [ "$total" -gt 0 ] && [ "$total" = "$with" ] || fail "$with of $total scripts carry the nonce"
+
+          c=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/.well-known/security.txt)
+          [ "$c" = "200" ] || fail "security.txt returned $c"
+          echo "All access-control and header checks passed."
